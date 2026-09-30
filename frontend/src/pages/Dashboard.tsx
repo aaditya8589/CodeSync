@@ -1,24 +1,27 @@
-import { useEffect, useState } from "react"
-import { getMyRooms, type Room } from "../services/roomService"
 
+import { getMyRooms, type Room } from "../services/roomService"
+import CreateRoom from "../components/CreateRoom"
+import JoinRoom from "../components/JoinRoom"
+import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
-  useEffect(() => {
-    const fetchRooms = async () => {
-      try {
-        const data = await getMyRooms()
-        setRooms(data)
-      } catch (error) {
-        setError("Failed to load rooms")
-        console.error(error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchRooms = async () => {
+    try {
+      const data = await getMyRooms()
+      setRooms(data)
+    } catch (error) {
+      setError("Failed to load rooms")
+      console.error(error)
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchRooms()
   }, [])
 
@@ -34,6 +37,15 @@ function Dashboard() {
     <div>
       <h1>CodeSync Dashboard</h1>
 
+      <CreateRoom
+  onRoomCreated={(room) => {
+    setRooms((currentRooms) => [...currentRooms, room])
+  }}
+/>
+<JoinRoom
+  onRoomJoined={fetchRooms}
+/>
+
       <h2>My Rooms</h2>
 
       {rooms.length === 0 ? (
@@ -41,10 +53,12 @@ function Dashboard() {
       ) : (
         <ul>
           {rooms.map((room) => (
-            <li key={room.id}>
-              {room.name}
-            </li>
-          ))}
+  <li key={room.id}>
+    <Link to={`/rooms/${room.id}`}>
+      {room.name}
+    </Link>
+  </li>
+))}
         </ul>
       )}
     </div>
