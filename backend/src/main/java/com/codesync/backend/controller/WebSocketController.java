@@ -1,5 +1,6 @@
 package com.codesync.backend.controller;
 
+import com.codesync.backend.dto.CodeChangeMessage;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -16,12 +17,12 @@ public class WebSocketController {
         this.messagingTemplate = messagingTemplate;
     }
 
-    @MessageMapping("/rooms/{roomId}/test")
-    public void testRoomMessage(
+    @MessageMapping("/rooms/{roomId}/code")
+    public void handleCodeChange(
             @DestinationVariable String roomId,
-            String message
+            CodeChangeMessage message
     ) {
-        String destination = "/topic/rooms/" + roomId;
+        String destination = "/topic/rooms/" + roomId + "/code";
 
         messagingTemplate.convertAndSend(
                 destination,

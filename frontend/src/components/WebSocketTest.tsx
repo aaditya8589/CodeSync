@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from "react"
 import { Client } from "@stomp/stompjs"
 
+interface CodeChangeMessage {
+  roomId: string
+  fileName: string
+  content: string
+}
+
 function WebSocketTest() {
-  const [message, setMessage] = useState("")
-  const [receivedMessage, setReceivedMessage] = useState("")
+  const [fileName, setFileName] = useState("main.cpp")
+  const [code, setCode] = useState("")
+  const [receivedChange, setReceivedChange] =
+    useState<CodeChangeMessage | null>(null)
   const [connected, setConnected] = useState(false)
 
   const clientRef = useRef<Client | null>(null)
@@ -21,10 +29,14 @@ function WebSocketTest() {
         setConnected(true)
 
         client.subscribe(
-          `/topic/rooms/${roomId}`,
+          `/topic/rooms/${roomId}/code`,
           (message) => {
-            console.log("Received:", message.body)
-            setReceivedMessage(message.body)
+            const change: CodeChangeMessage =
+              JSON.parse(message.body)
+
+            console.log("Received code change:", change)
+
+            setReceivedChange(change)
           }
         )
       },
@@ -53,11 +65,7 @@ function WebSocketTest() {
     }
   }, [])
 
-  const sendMessage = () => {
-    if (!message.trim()) {
-      return
-    }
-
+  const sendCodeChange = () => {
     const client = clientRef.current
 
     if (!client || !client.connected) {
@@ -65,17 +73,21 @@ function WebSocketTest() {
       return
     }
 
-    client.publish({
-      destination: `/app/rooms/${roomId}/test`,
-      body: message,
-    })
+    const change: CodeChangeMessage = {
+      roomId,
+      fileName,
+      content: code,
+    }
 
-    setMessage("")
+    client.publish({
+      destination: `/app/rooms/${roomId}/code`,
+      body: JSON.stringify(change),
+    })
   }
 
   return (
     <div>
-      <h2>WebSocket Room Test</h2>
+      <h2>Code Change WebSocket Test</h2>
 
       <p>
         Room: {roomId}
@@ -85,24 +97,68 @@ function WebSocketTest() {
         Status: {connected ? "Connected" : "Disconnected"}
       </p>
 
-      <input
-        type="text"
-        value={message}
-        onChange={(event) => setMessage(event.target.value)}
-        placeholder="Enter a message"
-      />
+      <div>
+        <label htmlFor="file-name">
+          File:
+        </label>
+
+        <input
+          id="file-name"
+          type="text"
+          value={fileName}
+          onChange={(event) =>
+            setFileName(event.target.value)
+          }
+        />
+      </div>
+
+      <br />
+
+      <div>
+        <label htmlFor="code">
+          Code:
+        </label>
+
+        <br />
+
+        <textarea
+          id="code"
+          rows={10}
+          cols={60}
+          value={code}
+          onChange={(event) =>
+            setCode(event.target.value)
+          }
+          placeholder="Enter code"
+        />
+      </div>
+
+      <br />
 
       <button
         type="button"
-        onClick={sendMessage}
+        onClick={sendCodeChange}
         disabled={!connected}
       >
-        Send
+        Send Code Change
       </button>
 
-      <p>
-        Received: {receivedMessage || "No message yet"}
-      </p>
+      <h3>Received Change</h3>
+
+      {receivedChange ? (
+        <div>
+          <p>
+            <strong>File:</strong>{" "}
+            {receivedChange.fileName}
+          </p>
+
+          <pre>
+            {receivedChange.content}
+          </pre>
+        </div>
+      ) : (
+        <p>No code change received yet.</p>
+      )}
     </div>
   )
 }

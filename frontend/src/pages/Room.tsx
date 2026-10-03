@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams, Link } from "react-router-dom"
 
 import {
@@ -10,6 +10,8 @@ import RoomHeader from "../components/RoomHeader"
 import FileExplorer from "../components/FileExplorer"
 import CodeEditor from "../components/CodeEditor"
 import OutputPanel from "../components/OutputPanel"
+
+import useCodeSync from "../hooks/useCodeSync"
 
 function Room() {
   const { roomId } = useParams<{ roomId: string }>()
@@ -25,7 +27,9 @@ function Room() {
 
   const [activeFile, setActiveFile] = useState("main.cpp")
 
-  const [fileContents, setFileContents] = useState<Record<string, string>>({
+  const [fileContents, setFileContents] = useState<
+    Record<string, string>
+  >({
     "main.cpp": `#include <iostream>
 
 using namespace std;
@@ -47,6 +51,7 @@ int main() {
   })
 
   const [output, setOutput] = useState("No output yet.")
+  const isRemoteUpdate = useRef(false)
 
   useEffect(() => {
     const fetchRoom = async () => {
@@ -73,12 +78,43 @@ int main() {
     fetchRoom()
   }, [roomId])
 
+  const handleRemoteChange = (
+  fileName: string,
+  content: string
+) => {
+  isRemoteUpdate.current = true
+
+  setFileContents((currentFiles) => ({
+    ...currentFiles,
+    [fileName]: content,
+  }))
+}
+
+  const { sendCodeChange } = useCodeSync({
+    roomId: roomId ?? "",
+    activeFile,
+    onRemoteChange: handleRemoteChange,
+  })
+
   const handleCodeChange = (newCode: string) => {
+  if (isRemoteUpdate.current) {
+    isRemoteUpdate.current = false
+
     setFileContents((currentFiles) => ({
       ...currentFiles,
       [activeFile]: newCode,
     }))
+
+    return
   }
+
+  setFileContents((currentFiles) => ({
+    ...currentFiles,
+    [activeFile]: newCode,
+  }))
+
+  sendCodeChange(newCode)
+}
 
   if (loading) {
     return <p>Loading room...</p>
@@ -127,7 +163,9 @@ int main() {
       <button
         type="button"
         onClick={() => {
-          setOutput("Code execution is not connected yet.")
+          setOutput(
+            "Code execution is not connected yet."
+          )
         }}
       >
         Run Code
@@ -135,7 +173,9 @@ int main() {
 
       <br />
 
-      <Link to="/dashboard">Back to Dashboard</Link>
+      <Link to="/dashboard">
+        Back to Dashboard
+      </Link>
     </div>
   )
 }
