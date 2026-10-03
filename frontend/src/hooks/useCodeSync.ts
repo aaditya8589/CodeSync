@@ -26,8 +26,21 @@ function useCodeSync({
   }, [onRemoteChange])
 
   useEffect(() => {
+    const token = localStorage.getItem("token")
+
+    if (!token) {
+      console.error(
+        "CodeSync WebSocket: no authentication token found"
+      )
+      return
+    }
+
     const client = new Client({
       brokerURL: "ws://localhost:8080/ws",
+
+      connectHeaders: {
+        Authorization: `Bearer ${token}`,
+      },
 
       reconnectDelay: 5000,
 
@@ -49,7 +62,9 @@ function useCodeSync({
       },
 
       onDisconnect: () => {
-        console.log("CodeSync WebSocket disconnected")
+        console.log(
+          "CodeSync WebSocket disconnected"
+        )
       },
 
       onStompError: (frame) => {
