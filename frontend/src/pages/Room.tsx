@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react"
 import { useParams, Link } from "react-router-dom"
-import { getRoom, type Room as RoomType } from "../services/roomService"
+
+import {
+  getRoom,
+  type Room as RoomType,
+} from "../services/roomService"
+
+import RoomHeader from "../components/RoomHeader"
+import FileExplorer from "../components/FileExplorer"
+import CodeEditor from "../components/CodeEditor"
+import OutputPanel from "../components/OutputPanel"
 
 function Room() {
   const { roomId } = useParams<{ roomId: string }>()
@@ -8,6 +17,36 @@ function Room() {
   const [room, setRoom] = useState<RoomType | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+
+  const [files] = useState<string[]>([
+    "main.cpp",
+    "solution.cpp",
+  ])
+
+  const [activeFile, setActiveFile] = useState("main.cpp")
+
+  const [fileContents, setFileContents] = useState<Record<string, string>>({
+    "main.cpp": `#include <iostream>
+
+using namespace std;
+
+int main() {
+    cout << "Hello, CodeSync!" << endl;
+
+    return 0;
+}`,
+    "solution.cpp": `#include <iostream>
+
+using namespace std;
+
+int main() {
+    // Write your solution here
+
+    return 0;
+}`,
+  })
+
+  const [output, setOutput] = useState("No output yet.")
 
   useEffect(() => {
     const fetchRoom = async () => {
@@ -34,6 +73,13 @@ function Room() {
     fetchRoom()
   }, [roomId])
 
+  const handleCodeChange = (newCode: string) => {
+    setFileContents((currentFiles) => ({
+      ...currentFiles,
+      [activeFile]: newCode,
+    }))
+  }
+
   if (loading) {
     return <p>Loading room...</p>
   }
@@ -54,11 +100,40 @@ function Room() {
 
   return (
     <div>
-      <h1>{room.name}</h1>
+      <RoomHeader
+        roomName={room.name}
+        roomId={room.id}
+      />
 
-      <p>Room ID: {room.id}</p>
+      <div>
+        <FileExplorer
+          files={files}
+          activeFile={activeFile}
+          onFileSelect={setActiveFile}
+        />
 
-      <p>Owner ID: {room.ownerId}</p>
+        <main>
+          <h3>{activeFile}</h3>
+
+          <CodeEditor
+            code={fileContents[activeFile]}
+            onCodeChange={handleCodeChange}
+          />
+
+          <OutputPanel output={output} />
+        </main>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          setOutput("Code execution is not connected yet.")
+        }}
+      >
+        Run Code
+      </button>
+
+      <br />
 
       <Link to="/dashboard">Back to Dashboard</Link>
     </div>

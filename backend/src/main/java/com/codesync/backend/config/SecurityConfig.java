@@ -102,10 +102,11 @@ public class SecurityConfig {
                 ).permitAll()
 
                 .requestMatchers(
-                        "/api/auth/register",
-                        "/api/auth/login",
-                        "/error"
-                ).permitAll()
+        "/api/auth/register",
+        "/api/auth/login",
+        "/ws/**",
+        "/error"
+).permitAll()
 
                 .anyRequest().authenticated()
             )
