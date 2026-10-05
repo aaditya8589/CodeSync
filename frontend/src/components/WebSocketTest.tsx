@@ -16,13 +16,27 @@ function WebSocketTest() {
 
   const clientRef = useRef<Client | null>(null)
 
-  const roomId = "ad35e907-be64-4c5d-8472-112a9479e1c5"
+  const roomId =
+    "ad35e907-be64-4c5d-8472-112a9479e1c5"
 
   useEffect(() => {
+    const token = localStorage.getItem("token")
+
+    if (!token) {
+      console.error(
+        "WebSocket test: no authentication token found"
+      )
+      return
+    }
+
     const client = new Client({
       brokerURL: "ws://localhost:8080/ws",
 
-      reconnectDelay: 5000,
+      connectHeaders: {
+        Authorization: `Bearer ${token}`,
+      },
+
+      reconnectDelay: 0,
 
       onConnect: () => {
         console.log("WebSocket connected")
@@ -34,7 +48,10 @@ function WebSocketTest() {
             const change: CodeChangeMessage =
               JSON.parse(message.body)
 
-            console.log("Received code change:", change)
+            console.log(
+              "Received code change:",
+              change
+            )
 
             setReceivedChange(change)
           }
@@ -47,11 +64,18 @@ function WebSocketTest() {
       },
 
       onStompError: (frame) => {
-        console.error("STOMP error:", frame)
-      },
+  console.error("STOMP ERROR COMMAND:", frame.command)
+  console.error("STOMP ERROR HEADERS:", frame.headers)
+  console.error("STOMP ERROR BODY:", frame.body)
+
+  setConnected(false)
+},
 
       onWebSocketError: (error) => {
-        console.error("WebSocket error:", error)
+        console.error(
+          "WebSocket error:",
+          error
+        )
       },
     })
 
@@ -69,7 +93,9 @@ function WebSocketTest() {
     const client = clientRef.current
 
     if (!client || !client.connected) {
-      console.error("WebSocket is not connected")
+      console.error(
+        "WebSocket is not connected"
+      )
       return
     }
 
@@ -94,7 +120,10 @@ function WebSocketTest() {
       </p>
 
       <p>
-        Status: {connected ? "Connected" : "Disconnected"}
+        Status:{" "}
+        {connected
+          ? "Connected"
+          : "Disconnected"}
       </p>
 
       <div>

@@ -1,6 +1,7 @@
 package com.codesync.backend.config;
 
 import com.codesync.backend.security.JwtService;
+import com.codesync.backend.service.RoomService;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -15,9 +16,14 @@ public class WebSocketConfig
         implements WebSocketMessageBrokerConfigurer {
 
     private final JwtService jwtService;
+    private final RoomService roomService;
 
-    public WebSocketConfig(JwtService jwtService) {
+    public WebSocketConfig(
+            JwtService jwtService,
+            RoomService roomService
+    ) {
         this.jwtService = jwtService;
+        this.roomService = roomService;
     }
 
     @Override
@@ -41,7 +47,10 @@ public class WebSocketConfig
             ChannelRegistration registration
     ) {
         registration.interceptors(
-                new WebSocketAuthInterceptor(jwtService)
+                new WebSocketAuthInterceptor(
+                        jwtService,
+                        roomService
+                )
         );
     }
 }
