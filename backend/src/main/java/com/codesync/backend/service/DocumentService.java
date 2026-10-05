@@ -1,11 +1,12 @@
 package com.codesync.backend.service;
 
 import com.codesync.backend.dto.DocumentResponse;
+import com.codesync.backend.entity.Document;
+import com.codesync.backend.exception.DocumentNotFoundException;
 import com.codesync.backend.repository.DocumentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.codesync.backend.entity.Document;
-import com.codesync.backend.exception.DocumentNotFoundException;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -31,11 +32,13 @@ public class DocumentService {
                         doc.getId(),
                         doc.getFileName(),
                         doc.getContent(),
-                        doc.getUpdatedAt()
+                        doc.getUpdatedAt(),
+                        doc.getRevision()
                 ))
                 .toList();
     }
-        @Transactional
+
+    @Transactional
     public Document updateContent(
             UUID roomId,
             UUID documentId,

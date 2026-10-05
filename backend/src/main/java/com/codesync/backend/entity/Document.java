@@ -1,6 +1,7 @@
 package com.codesync.backend.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -34,6 +35,10 @@ public class Document {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @ColumnDefault("0")
+    @Column(nullable = false)
+    private long revision;
+
     public Document() {
     }
 
@@ -63,9 +68,14 @@ public class Document {
     public void setContent(String content) {
         this.content = content;
         this.updatedAt = Instant.now();
+        this.revision++;
     }
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public long getRevision() {
+        return revision;
     }
 }
