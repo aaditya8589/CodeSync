@@ -5,6 +5,7 @@ import {
   getRoom,
   type Room as RoomType,
 } from "../services/roomService"
+import { getDocuments } from "../services/documentService"
 
 import RoomHeader from "../components/RoomHeader"
 import FileExplorer from "../components/FileExplorer"
@@ -20,41 +21,16 @@ function Room() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
-  const [files] = useState<string[]>([
-    "main.cpp",
-    "solution.cpp",
-  ])
-
-  const [activeFile, setActiveFile] = useState("main.cpp")
-
-  const [fileContents, setFileContents] = useState<
-    Record<string, string>
-  >({
-    "main.cpp": `#include <iostream>
-
-using namespace std;
-
-int main() {
-    cout << "Hello, CodeSync!" << endl;
-
-    return 0;
-}`,
-    "solution.cpp": `#include <iostream>
-
-using namespace std;
-
-int main() {
-    // Write your solution here
-
-    return 0;
-}`,
-  })
+  // Files now come from the server, not hardcoded
+  const [files, setFiles] = useState<string[]>([])
+  const [activeFile, setActiveFile] = useState("")
+  const [fileContents, setFileContents] = useState<Record<string, string>>({})
 
   const [output, setOutput] = useState("No output yet.")
   const isRemoteUpdate = useRef(false)
 
   useEffect(() => {
-    const fetchRoom = async () => {
+    const fetchRoomAndDocuments = async () => {
       if (!roomId) {
         setError("Room ID is missing")
         setLoading(false)
@@ -62,8 +38,23 @@ int main() {
       }
 
       try {
-        const data = await getRoom(roomId)
-        setRoom(data)
+        // Both requests run at the same time
+        const [roomData, documents] = await Promise.all([
+          getRoom(roomId),
+          getDocuments(roomId),
+        ])
+
+        setRoom(roomData)
+
+        const fileNames = documents.map((doc) => doc.fileName)
+        const contents: Record<string, string> = {}
+        for (const doc of documents) {
+          contents[doc.fileName] = doc.content
+        }
+
+        setFiles(fileNames)
+        setFileContents(contents)
+        setActiveFile(fileNames[0] ?? "")
       } catch (error) {
         setError(
           error instanceof Error
@@ -75,20 +66,20 @@ int main() {
       }
     }
 
-    fetchRoom()
+    fetchRoomAndDocuments()
   }, [roomId])
 
   const handleRemoteChange = (
-  fileName: string,
-  content: string
-) => {
-  isRemoteUpdate.current = true
+    fileName: string,
+    content: string
+  ) => {
+    isRemoteUpdate.current = true
 
-  setFileContents((currentFiles) => ({
-    ...currentFiles,
-    [fileName]: content,
-  }))
-}
+    setFileContents((currentFiles) => ({
+      ...currentFiles,
+      [fileName]: content,
+    }))
+  }
 
   const { sendCodeChange } = useCodeSync({
     roomId: roomId ?? "",
@@ -97,24 +88,24 @@ int main() {
   })
 
   const handleCodeChange = (newCode: string) => {
-  if (isRemoteUpdate.current) {
-    isRemoteUpdate.current = false
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false
+
+      setFileContents((currentFiles) => ({
+        ...currentFiles,
+        [activeFile]: newCode,
+      }))
+
+      return
+    }
 
     setFileContents((currentFiles) => ({
       ...currentFiles,
       [activeFile]: newCode,
     }))
 
-    return
+    sendCodeChange(newCode)
   }
-
-  setFileContents((currentFiles) => ({
-    ...currentFiles,
-    [activeFile]: newCode,
-  }))
-
-  sendCodeChange(newCode)
-}
 
   if (loading) {
     return <p>Loading room...</p>
@@ -149,12 +140,18 @@ int main() {
         />
 
         <main>
-          <h3>{activeFile}</h3>
+          {activeFile ? (
+            <>
+              <h3>{activeFile}</h3>
 
-          <CodeEditor
-            code={fileContents[activeFile]}
-            onCodeChange={handleCodeChange}
-          />
+              <CodeEditor
+                code={fileContents[activeFile] ?? ""}
+                onCodeChange={handleCodeChange}
+              />
+            </>
+          ) : (
+            <p>This room has no files yet.</p>
+          )}
 
           <OutputPanel output={output} />
         </main>
@@ -163,9 +160,7 @@ int main() {
       <button
         type="button"
         onClick={() => {
-          setOutput(
-            "Code execution is not connected yet."
-          )
+          setOutput("Code execution is not connected yet.")
         }}
       >
         Run Code
