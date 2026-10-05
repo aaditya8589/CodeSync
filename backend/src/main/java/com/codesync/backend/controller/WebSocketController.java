@@ -1,7 +1,8 @@
 package com.codesync.backend.controller;
 
 import com.codesync.backend.dto.CodeChangeMessage;
-import com.codesync.backend.service.RoomService;
+import com.codesync.backend.entity.Document;
+import com.codesync.backend.service.DocumentService;
 
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -9,19 +10,20 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
+import java.util.UUID;
 
 @Controller
 public class WebSocketController {
 
     private final SimpMessagingTemplate messagingTemplate;
-    private final RoomService roomService;
+    private final DocumentService documentService;
 
     public WebSocketController(
             SimpMessagingTemplate messagingTemplate,
-            RoomService roomService
+            DocumentService documentService
     ) {
         this.messagingTemplate = messagingTemplate;
-        this.roomService = roomService;
+        this.documentService = documentService;
     }
 
     @MessageMapping("/rooms/{roomId}/code")
@@ -30,35 +32,35 @@ public class WebSocketController {
             CodeChangeMessage message,
             Principal principal
     ) {
-
         if (principal == null) {
-    throw new IllegalStateException(
-            "WebSocket user is not authenticated"
-    );
-}
-
-String username = principal.getName();
-
-        // Verify that the authenticated user belongs to this room.
-        roomService.checkRoomAccess(
-                java.util.UUID.fromString(roomId),
-                username
-        );
-
-        // Make sure the room in the message matches
-        // the room in the STOMP destination.
-        if (!roomId.equals(message.getRoomId())) {
-            throw new IllegalArgumentException(
-                    "Room ID in message does not match destination"
-            );
+            throw new IllegalStateException("WebSocket user is not authenticated");
         }
 
-        String destination =
-                "/topic/rooms/" + roomId + "/code";
+        // The destination is the source of truth for the room
+        if (!roomId.equals(message.getRoomId())) {
+            throw new IllegalArgumentException("Room ID in message does not match destination");
+        }
 
-        messagingTemplate.convertAndSend(
-                destination,
-                message
+        if (message.getDocumentId() == null) {
+            throw new IllegalArgumentException("Code change is missing documentId");
+        }
+
+        // Checks membership, checks the document belongs to the room, saves it
+        Document document = documentService.updateContent(
+                UUID.fromString(roomId),
+                UUID.fromString(message.getDocumentId()),
+                message.getContent(),
+                principal.getName()
         );
+
+        // Broadcast the server's file name, not whatever the client claimed
+        CodeChangeMessage broadcast = new CodeChangeMessage(
+                roomId,
+                document.getId().toString(),
+                document.getFileName(),
+                document.getContent()
+        );
+
+        messagingTemplate.convertAndSend("/topic/rooms/" + roomId + "/code", broadcast);
     }
 }

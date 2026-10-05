@@ -25,6 +25,7 @@ function Room() {
   const [files, setFiles] = useState<string[]>([])
   const [activeFile, setActiveFile] = useState("")
   const [fileContents, setFileContents] = useState<Record<string, string>>({})
+  const [documentIds, setDocumentIds] = useState<Record<string, string>>({})
 
   const [output, setOutput] = useState("No output yet.")
   const isRemoteUpdate = useRef(false)
@@ -48,12 +49,15 @@ function Room() {
 
         const fileNames = documents.map((doc) => doc.fileName)
         const contents: Record<string, string> = {}
+        const ids: Record<string, string> = {}
         for (const doc of documents) {
           contents[doc.fileName] = doc.content
+          ids[doc.fileName] = doc.id
         }
 
         setFiles(fileNames)
         setFileContents(contents)
+        setDocumentIds(ids)
         setActiveFile(fileNames[0] ?? "")
       } catch (error) {
         setError(
@@ -84,6 +88,7 @@ function Room() {
   const { sendCodeChange } = useCodeSync({
     roomId: roomId ?? "",
     activeFile,
+    activeDocumentId: documentIds[activeFile] ?? "",
     onRemoteChange: handleRemoteChange,
   })
 

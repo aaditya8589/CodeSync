@@ -3,6 +3,7 @@ import { Client } from "@stomp/stompjs"
 
 interface CodeChangeMessage {
   roomId: string
+  documentId: string
   fileName: string
   content: string
 }
@@ -10,12 +11,14 @@ interface CodeChangeMessage {
 interface UseCodeSyncProps {
   roomId: string
   activeFile: string
+  activeDocumentId: string
   onRemoteChange: (fileName: string, content: string) => void
 }
 
 function useCodeSync({
   roomId,
   activeFile,
+  activeDocumentId,
   onRemoteChange,
 }: UseCodeSyncProps) {
   const clientRef = useRef<Client | null>(null)
@@ -102,8 +105,14 @@ function useCodeSync({
       return
     }
 
+    if (!activeDocumentId) {
+      console.error("CodeSync: no document selected")
+      return
+    }
+
     const change: CodeChangeMessage = {
       roomId,
+      documentId: activeDocumentId,
       fileName: activeFile,
       content,
     }

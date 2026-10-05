@@ -4,7 +4,8 @@ import com.codesync.backend.dto.DocumentResponse;
 import com.codesync.backend.repository.DocumentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.codesync.backend.entity.Document;
+import com.codesync.backend.exception.DocumentNotFoundException;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,5 +34,27 @@ public class DocumentService {
                         doc.getUpdatedAt()
                 ))
                 .toList();
+    }
+        @Transactional
+    public Document updateContent(
+            UUID roomId,
+            UUID documentId,
+            String content,
+            String username
+    ) {
+        roomService.checkRoomAccess(roomId, username);
+
+        // Looks up by BOTH ids: a document from another room is "not found"
+        Document document = documentRepository
+                .findByIdAndRoomId(documentId, roomId)
+                .orElseThrow(() ->
+                        new DocumentNotFoundException("Document not found in this room")
+                );
+
+        // No save() needed: Hibernate writes changes to a loaded
+        // entity automatically when the transaction commits.
+        document.setContent(content);
+
+        return document;
     }
 }
