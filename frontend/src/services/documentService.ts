@@ -5,6 +5,7 @@ export interface RoomDocument {
   fileName: string
   content: string
   updatedAt: string
+  revision: number
 }
 
 export async function getDocuments(roomId: string): Promise<RoomDocument[]> {

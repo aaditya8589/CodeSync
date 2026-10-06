@@ -4,6 +4,8 @@ import com.codesync.backend.dto.DocumentResponse;
 import com.codesync.backend.entity.Document;
 import com.codesync.backend.exception.DocumentNotFoundException;
 import com.codesync.backend.repository.DocumentRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,6 +14,8 @@ import java.util.UUID;
 
 @Service
 public class DocumentService {
+
+    private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
 
     private final DocumentRepository documentRepository;
     private final RoomService roomService;
@@ -43,19 +47,31 @@ public class DocumentService {
             UUID roomId,
             UUID documentId,
             String content,
+            long baseRevision,
             String username
     ) {
         roomService.checkRoomAccess(roomId, username);
 
-        // Looks up by BOTH ids: a document from another room is "not found"
         Document document = documentRepository
                 .findByIdAndRoomId(documentId, roomId)
                 .orElseThrow(() ->
                         new DocumentNotFoundException("Document not found in this room")
                 );
 
-        // No save() needed: Hibernate writes changes to a loaded
-        // entity automatically when the transaction commits.
+        long currentRevision = document.getRevision();
+
+                if (baseRevision != currentRevision) {
+            // Detect only, for now: we still save, so we can measure how often this happens
+            log.warn(
+                    "STALE EDIT: user={} file={} baseRevision={} serverRevision={} (behind by {})",
+                    username,
+                    document.getFileName(),
+                    baseRevision,
+                    currentRevision,
+                    currentRevision - baseRevision
+            );
+        }
+
         document.setContent(content);
 
         return document;

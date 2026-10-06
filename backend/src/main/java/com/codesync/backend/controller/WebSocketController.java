@@ -45,20 +45,26 @@ public class WebSocketController {
             throw new IllegalArgumentException("Code change is missing documentId");
         }
 
+        if (message.getBaseRevision() == null) {
+            throw new IllegalArgumentException("Code change is missing baseRevision");
+        }
+
         // Checks membership, checks the document belongs to the room, saves it
         Document document = documentService.updateContent(
                 UUID.fromString(roomId),
                 UUID.fromString(message.getDocumentId()),
                 message.getContent(),
+                message.getBaseRevision(),
                 principal.getName()
         );
 
-        // Broadcast the server's file name, not whatever the client claimed
+        // Broadcast the server's file name and new revision
         CodeChangeMessage broadcast = new CodeChangeMessage(
                 roomId,
                 document.getId().toString(),
                 document.getFileName(),
-                document.getContent()
+                document.getContent(),
+                document.getRevision()
         );
 
         messagingTemplate.convertAndSend("/topic/rooms/" + roomId + "/code", broadcast);

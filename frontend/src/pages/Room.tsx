@@ -26,6 +26,7 @@ function Room() {
   const [activeFile, setActiveFile] = useState("")
   const [fileContents, setFileContents] = useState<Record<string, string>>({})
   const [documentIds, setDocumentIds] = useState<Record<string, string>>({})
+  const [revisions, setRevisions] = useState<Record<string, number>>({})
 
   const [output, setOutput] = useState("No output yet.")
   const isRemoteUpdate = useRef(false)
@@ -50,14 +51,17 @@ function Room() {
         const fileNames = documents.map((doc) => doc.fileName)
         const contents: Record<string, string> = {}
         const ids: Record<string, string> = {}
+        const revs: Record<string, number> = {}
         for (const doc of documents) {
           contents[doc.fileName] = doc.content
           ids[doc.fileName] = doc.id
+          revs[doc.fileName] = doc.revision
         }
 
         setFiles(fileNames)
         setFileContents(contents)
         setDocumentIds(ids)
+        setRevisions(revs)
         setActiveFile(fileNames[0] ?? "")
       } catch (error) {
         setError(
@@ -75,9 +79,15 @@ function Room() {
 
   const handleRemoteChange = (
     fileName: string,
-    content: string
+    content: string,
+    revision: number
   ) => {
     isRemoteUpdate.current = true
+
+    setRevisions((current) => ({
+      ...current,
+      [fileName]: revision,
+    }))
 
     setFileContents((currentFiles) => ({
       ...currentFiles,
@@ -89,6 +99,7 @@ function Room() {
     roomId: roomId ?? "",
     activeFile,
     activeDocumentId: documentIds[activeFile] ?? "",
+    activeRevision: revisions[activeFile] ?? 0,
     onRemoteChange: handleRemoteChange,
   })
 

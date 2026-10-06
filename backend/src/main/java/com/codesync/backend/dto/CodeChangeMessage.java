@@ -7,14 +7,21 @@ public class CodeChangeMessage {
     private String fileName;
     private String content;
 
+    // Client → server: the revision this edit was based on
+    private Long baseRevision;
+
+    // Server → clients: the document's revision after this edit was saved
+    private Long revision;
+
     public CodeChangeMessage() {
     }
 
-    public CodeChangeMessage(String roomId, String documentId, String fileName, String content) {
+    public CodeChangeMessage(String roomId, String documentId, String fileName, String content, Long revision) {
         this.roomId = roomId;
         this.documentId = documentId;
         this.fileName = fileName;
         this.content = content;
+        this.revision = revision;
     }
 
     public String getRoomId() { return roomId; }
@@ -28,4 +35,10 @@ public class CodeChangeMessage {
 
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
+
+    public Long getBaseRevision() { return baseRevision; }
+    public void setBaseRevision(Long baseRevision) { this.baseRevision = baseRevision; }
+
+    public Long getRevision() { return revision; }
+    public void setRevision(Long revision) { this.revision = revision; }
 }

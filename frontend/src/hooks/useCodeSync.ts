@@ -6,19 +6,23 @@ interface CodeChangeMessage {
   documentId: string
   fileName: string
   content: string
+  baseRevision?: number
+  revision?: number
 }
 
 interface UseCodeSyncProps {
   roomId: string
   activeFile: string
   activeDocumentId: string
-  onRemoteChange: (fileName: string, content: string) => void
+  activeRevision: number
+  onRemoteChange: (fileName: string, content: string, revision: number) => void
 }
 
 function useCodeSync({
   roomId,
   activeFile,
   activeDocumentId,
+  activeRevision,
   onRemoteChange,
 }: UseCodeSyncProps) {
   const clientRef = useRef<Client | null>(null)
@@ -58,7 +62,8 @@ function useCodeSync({
 
             onRemoteChangeRef.current(
               change.fileName,
-              change.content
+              change.content,
+              change.revision ?? 0
             )
           }
         )
@@ -115,6 +120,7 @@ function useCodeSync({
       documentId: activeDocumentId,
       fileName: activeFile,
       content,
+      baseRevision: activeRevision,
     }
 
     client.publish({
