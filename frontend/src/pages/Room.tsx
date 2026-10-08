@@ -1,35 +1,34 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, Link } from "react-router-dom"
 
 import {
   getRoom,
   type Room as RoomType,
 } from "../services/roomService"
-import { getDocuments } from "../services/documentService"
+import { getDocuments, type RoomDocument } from "../services/documentService"
 
 import RoomHeader from "../components/RoomHeader"
 import FileExplorer from "../components/FileExplorer"
-import CodeEditor from "../components/CodeEditor"
+import CodeEditor, { type CodeEditorHandle } from "../components/CodeEditor"
 import OutputPanel from "../components/OutputPanel"
 
 import useCodeSync from "../hooks/useCodeSync"
+import type { TextOperation } from "../ot/textOperation"
 
 function Room() {
   const { roomId } = useParams<{ roomId: string }>()
 
   const [room, setRoom] = useState<RoomType | null>(null)
+  const [documents, setDocuments] = useState<RoomDocument[] | null>(null)
+  const [activeDocumentId, setActiveDocumentId] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-
-  // Files now come from the server, not hardcoded
-  const [files, setFiles] = useState<string[]>([])
-  const [activeFile, setActiveFile] = useState("")
-  const [fileContents, setFileContents] = useState<Record<string, string>>({})
-  const [documentIds, setDocumentIds] = useState<Record<string, string>>({})
-  const [revisions, setRevisions] = useState<Record<string, number>>({})
-
+  const [editorReady, setEditorReady] = useState(false)
   const [output, setOutput] = useState("No output yet.")
-  const isRemoteUpdate = useRef(false)
+
+  const editorRef = useRef<CodeEditorHandle>(null)
+  // Only the newest reload may apply its result
+  const resyncRequestRef = useRef(0)
 
   useEffect(() => {
     const fetchRoomAndDocuments = async () => {
@@ -40,29 +39,14 @@ function Room() {
       }
 
       try {
-        // Both requests run at the same time
-        const [roomData, documents] = await Promise.all([
+        const [roomData, docs] = await Promise.all([
           getRoom(roomId),
           getDocuments(roomId),
         ])
 
         setRoom(roomData)
-
-        const fileNames = documents.map((doc) => doc.fileName)
-        const contents: Record<string, string> = {}
-        const ids: Record<string, string> = {}
-        const revs: Record<string, number> = {}
-        for (const doc of documents) {
-          contents[doc.fileName] = doc.content
-          ids[doc.fileName] = doc.id
-          revs[doc.fileName] = doc.revision
-        }
-
-        setFiles(fileNames)
-        setFileContents(contents)
-        setDocumentIds(ids)
-        setRevisions(revs)
-        setActiveFile(fileNames[0] ?? "")
+        setDocuments(docs)
+        setActiveDocumentId(docs[0]?.id ?? "")
       } catch (error) {
         setError(
           error instanceof Error
@@ -77,51 +61,40 @@ function Room() {
     fetchRoomAndDocuments()
   }, [roomId])
 
-  const handleRemoteChange = (
-    fileName: string,
-    content: string,
-    revision: number
-  ) => {
-    isRemoteUpdate.current = true
+  const resync = useCallback(async (reason: string) => {
+    if (!roomId) return
 
-    setRevisions((current) => ({
-      ...current,
-      [fileName]: revision,
-    }))
+    const request = ++resyncRequestRef.current
+    console.info(`CodeSync: loading latest documents (${reason})`)
 
-    setFileContents((currentFiles) => ({
-      ...currentFiles,
-      [fileName]: content,
-    }))
-  }
+    try {
+      const fresh = await getDocuments(roomId)
+      if (request !== resyncRequestRef.current) return
 
-  const { sendCodeChange } = useCodeSync({
-    roomId: roomId ?? "",
-    activeFile,
-    activeDocumentId: documentIds[activeFile] ?? "",
-    activeRevision: revisions[activeFile] ?? 0,
-    onRemoteChange: handleRemoteChange,
-  })
-
-  const handleCodeChange = (newCode: string) => {
-    if (isRemoteUpdate.current) {
-      isRemoteUpdate.current = false
-
-      setFileContents((currentFiles) => ({
-        ...currentFiles,
-        [activeFile]: newCode,
-      }))
-
-      return
+      editorRef.current?.reset(fresh)
+      setDocuments(fresh)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to reload documents")
     }
+  }, [roomId])
 
-    setFileContents((currentFiles) => ({
-      ...currentFiles,
-      [activeFile]: newCode,
-    }))
+  const handleRemoteOperation = useCallback((documentId: string, operation: TextOperation) => {
+    editorRef.current?.applyRemote(documentId, operation)
+  }, [])
 
-    sendCodeChange(newCode)
-  }
+  const handleResyncNeeded = useCallback((reason: string) => {
+    void resync(reason)
+  }, [resync])
+
+  const handleEditorReady = useCallback(() => setEditorReady(true), [])
+
+  const { ready, applyLocalOperation } = useCodeSync({
+    roomId: roomId ?? "",
+    documents,
+    enabled: editorReady,
+    onRemoteOperation: handleRemoteOperation,
+    onResyncNeeded: handleResyncNeeded,
+  })
 
   if (loading) {
     return <p>Loading room...</p>
@@ -137,9 +110,11 @@ function Room() {
     )
   }
 
-  if (!room) {
+  if (!room || !documents) {
     return <p>Room not found</p>
   }
+
+  const activeDocument = documents.find((doc) => doc.id === activeDocumentId)
 
   return (
     <div>
@@ -150,19 +125,29 @@ function Room() {
 
       <div>
         <FileExplorer
-          files={files}
-          activeFile={activeFile}
-          onFileSelect={setActiveFile}
+          files={documents.map((doc) => doc.fileName)}
+          activeFile={activeDocument?.fileName ?? ""}
+          onFileSelect={(fileName) => {
+            const doc = documents.find((d) => d.fileName === fileName)
+            if (doc) setActiveDocumentId(doc.id)
+          }}
         />
 
         <main>
-          {activeFile ? (
+          {activeDocument ? (
             <>
-              <h3>{activeFile}</h3>
+              <h3>
+                {activeDocument.fileName}
+                {ready ? "" : " (connecting...)"}
+              </h3>
 
               <CodeEditor
-                code={fileContents[activeFile] ?? ""}
-                onCodeChange={handleCodeChange}
+                ref={editorRef}
+                documents={documents}
+                activeDocumentId={activeDocumentId}
+                readOnly={!ready}
+                onLocalOperation={applyLocalOperation}
+                onReady={handleEditorReady}
               />
             </>
           ) : (
