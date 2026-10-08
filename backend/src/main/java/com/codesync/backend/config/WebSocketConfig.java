@@ -30,8 +30,12 @@ public class WebSocketConfig
     public void configureMessageBroker(
             MessageBrokerRegistry registry
     ) {
-        registry.enableSimpleBroker("/topic");
+        registry.enableSimpleBroker("/topic", "/queue");
         registry.setApplicationDestinationPrefixes("/app");
+
+        // Operations must reach each client in revision order. Without this, Spring may
+        // deliver messages to the same client in parallel and therefore out of order.
+        registry.setPreservePublishOrder(true);
     }
 
     @Override

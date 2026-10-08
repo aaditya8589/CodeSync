@@ -302,6 +302,25 @@ public final class TextOperation {
         return result;
     }
 
+    /**
+     * True if the text has no half of a surrogate pair on its own. Such text cannot be stored as
+     * UTF-8, and an operation positioned inside an emoji would produce it.
+     */
+    public static boolean isWellFormedUtf16(String text) {
+        for (int index = 0; index < text.length(); index++) {
+            char c = text.charAt(index);
+            if (Character.isHighSurrogate(c)) {
+                if (index + 1 >= text.length() || !Character.isLowSurrogate(text.charAt(index + 1))) {
+                    return false;
+                }
+                index++;
+            } else if (Character.isLowSurrogate(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** Wire format: positive number = retain, string = insert, negative number = delete. */
     public List<Object> toJson() {
         List<Object> json = new ArrayList<>(components.size());

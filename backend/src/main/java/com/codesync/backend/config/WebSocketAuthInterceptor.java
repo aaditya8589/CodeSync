@@ -30,6 +30,10 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private static final Pattern ROOM_TOPIC =
             Pattern.compile("^/topic/rooms/([0-9a-fA-F-]{36})/code$");
 
+    // Each user's private channel for rejected operations. Spring resolves it to the
+    // subscriber's own sessions, so no room check is needed.
+    private static final String USER_ERRORS = "/user/queue/errors";
+
     // Clients may only send to application handlers. Sending to /topic would
     // go straight to the broker and skip all server-side checks.
     private static final String APPLICATION_PREFIX = "/app/";
@@ -86,6 +90,10 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private void authorizeSubscription(StompHeaderAccessor accessor) {
         String username = requireUser(accessor);
         String destination = accessor.getDestination();
+
+        if (USER_ERRORS.equals(destination)) {
+            return;
+        }
 
         Matcher matcher = destination == null ? null : ROOM_TOPIC.matcher(destination);
 

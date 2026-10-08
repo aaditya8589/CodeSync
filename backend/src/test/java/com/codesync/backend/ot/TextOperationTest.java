@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -271,6 +272,30 @@ class TextOperationTest {
     void rebaseWithNoHistoryReturnsSameOperation() {
         TextOperation op = new TextOperation().retain(2).insert("x");
         assertEquals(op, TextOperation.rebase(op, List.of()));
+    }
+
+    // ---------- UTF-16 ----------
+
+    @Test
+    void wellFormedUtf16AcceptsNormalTextAndEmoji() {
+        assertTrue(TextOperation.isWellFormedUtf16(""));
+        assertTrue(TextOperation.isWellFormedUtf16("int main() { return 0; }"));
+        assertTrue(TextOperation.isWellFormedUtf16("caf\u00e9 \u4e2d \ud83d\ude00"));
+    }
+
+    @Test
+    void wellFormedUtf16RejectsHalfAnEmoji() {
+        assertFalse(TextOperation.isWellFormedUtf16("\ud83d"));
+        assertFalse(TextOperation.isWellFormedUtf16("\ude00"));
+        assertFalse(TextOperation.isWellFormedUtf16("a\ud83dx\ude00"));
+        assertFalse(TextOperation.isWellFormedUtf16("\ude00\ud83d"));
+    }
+
+    @Test
+    void operationInsideAnEmojiProducesMalformedText() {
+        String text = "\ud83d\ude00";
+        TextOperation splitsEmoji = new TextOperation().retain(1).insert("x").retain(1);
+        assertFalse(TextOperation.isWellFormedUtf16(splitsEmoji.apply(text)));
     }
 
     // ---------- helpers ----------
