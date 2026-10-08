@@ -290,6 +290,90 @@ public final class TextOperation {
         return new TextOperation[]{aPrime, bPrime};
     }
 
+    /**
+     * Rebases an operation made against an older revision onto the current one, by transforming it
+     * past every operation the server applied since. {@code concurrent} must be in revision order.
+     */
+    public static TextOperation rebase(TextOperation operation, List<TextOperation> concurrent) {
+        TextOperation result = operation;
+        for (TextOperation applied : concurrent) {
+            result = transform(applied, result)[1];
+        }
+        return result;
+    }
+
+    /** Wire format: positive number = retain, string = insert, negative number = delete. */
+    public List<Object> toJson() {
+        List<Object> json = new ArrayList<>(components.size());
+        for (Component component : components) {
+            switch (component) {
+                case Retain r -> json.add(r.count());
+                case Insert i -> json.add(i.text());
+                case Delete d -> json.add(-d.count());
+            }
+        }
+        return json;
+    }
+
+    public static TextOperation fromJson(List<?> json) {
+        if (json == null) throw new IllegalArgumentException("operation is missing");
+
+        TextOperation operation = new TextOperation();
+        for (Object item : json) {
+            if (item instanceof String text) {
+                if (text.isEmpty()) throw new IllegalArgumentException("empty insert in operation");
+                operation.insert(text);
+            } else if (item instanceof Integer || item instanceof Long) {
+                long value = ((Number) item).longValue();
+                if (value == 0 || Math.abs(value) > Integer.MAX_VALUE) {
+                    throw new IllegalArgumentException("invalid retain/delete count: " + value);
+                }
+                if (value > 0) operation.retain((int) value);
+                else operation.delete((int) -value);
+            } else {
+                throw new IllegalArgumentException("invalid operation component: " + item);
+            }
+        }
+        return operation;
+    }
+
+    /** Compact JSON text for storing in the database, e.g. [12,"x",-3,40]. */
+    public String toJsonString() {
+        StringBuilder out = new StringBuilder("[");
+        for (int index = 0; index < components.size(); index++) {
+            if (index > 0) out.append(',');
+            switch (components.get(index)) {
+                case Retain r -> out.append(r.count());
+                case Delete d -> out.append(-d.count());
+                case Insert i -> appendJsonString(out, i.text());
+            }
+        }
+        return out.append(']').toString();
+    }
+
+    public static TextOperation fromJsonString(String json) {
+        return fromJson(new JsonArrayParser(json).parse());
+    }
+
+    private static void appendJsonString(StringBuilder out, String text) {
+        out.append('"');
+        for (int index = 0; index < text.length(); index++) {
+            char c = text.charAt(index);
+            switch (c) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20) out.append(String.format("\\u%04x", (int) c));
+                    else out.append(c);
+                }
+            }
+        }
+        out.append('"');
+    }
+
     @Override
     public boolean equals(Object other) {
         return other instanceof TextOperation op && components.equals(op.components);
@@ -311,6 +395,110 @@ public final class TextOperation {
 
     private void replaceLast(Component component) {
         components.set(components.size() - 1, component);
+    }
+
+    /** Parses the stored format only: a flat JSON array of integers and strings. */
+    private static final class JsonArrayParser {
+
+        private final String json;
+        private int position = 0;
+
+        JsonArrayParser(String json) {
+            if (json == null) throw new IllegalArgumentException("operation JSON is missing");
+            this.json = json;
+        }
+
+        List<Object> parse() {
+            List<Object> items = new ArrayList<>();
+            skipWhitespace();
+            expect('[');
+            skipWhitespace();
+
+            if (peek() == ']') {
+                position++;
+            } else {
+                while (true) {
+                    skipWhitespace();
+                    items.add(peek() == '"' ? readString() : readInteger());
+                    skipWhitespace();
+                    char c = next();
+                    if (c == ']') break;
+                    if (c != ',') throw error("expected ',' or ']'");
+                }
+            }
+
+            skipWhitespace();
+            if (position != json.length()) throw error("unexpected trailing characters");
+            return items;
+        }
+
+        private Long readInteger() {
+            int start = position;
+            if (peek() == '-') position++;
+            while (position < json.length() && Character.isDigit(json.charAt(position))) position++;
+            try {
+                return Long.parseLong(json.substring(start, position));
+            } catch (NumberFormatException exception) {
+                throw error("invalid number");
+            }
+        }
+
+        private String readString() {
+            expect('"');
+            StringBuilder text = new StringBuilder();
+            while (true) {
+                char c = next();
+                if (c == '"') return text.toString();
+                if (c != '\\') {
+                    text.append(c);
+                    continue;
+                }
+                char escaped = next();
+                switch (escaped) {
+                    case '"' -> text.append('"');
+                    case '\\' -> text.append('\\');
+                    case '/' -> text.append('/');
+                    case 'b' -> text.append('\b');
+                    case 'f' -> text.append('\f');
+                    case 'n' -> text.append('\n');
+                    case 'r' -> text.append('\r');
+                    case 't' -> text.append('\t');
+                    case 'u' -> {
+                        if (position + 4 > json.length()) throw error("truncated \\u escape");
+                        try {
+                            text.append((char) Integer.parseInt(json.substring(position, position + 4), 16));
+                        } catch (NumberFormatException exception) {
+                            throw error("invalid \\u escape");
+                        }
+                        position += 4;
+                    }
+                    default -> throw error("invalid escape");
+                }
+            }
+        }
+
+        private void skipWhitespace() {
+            while (position < json.length() && Character.isWhitespace(json.charAt(position))) position++;
+        }
+
+        private char peek() {
+            if (position >= json.length()) throw error("unexpected end of input");
+            return json.charAt(position);
+        }
+
+        private char next() {
+            char c = peek();
+            position++;
+            return c;
+        }
+
+        private void expect(char expected) {
+            if (next() != expected) throw error("expected '" + expected + "'");
+        }
+
+        private IllegalArgumentException error(String message) {
+            return new IllegalArgumentException("Invalid operation JSON at " + position + ": " + message);
+        }
     }
 
     /**

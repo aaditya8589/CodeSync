@@ -2,6 +2,8 @@ package com.codesync.backend.ot;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -174,12 +176,121 @@ class TextOperationTest {
         }
     }
 
+    // ---------- JSON ----------
+
+    @Test
+    void toJsonUsesWireFormat() {
+        TextOperation op = new TextOperation().retain(3).insert("hi").delete(2).retain(1);
+        assertEquals(List.of(3, "hi", -2, 1), op.toJson());
+        assertEquals("[3,\"hi\",-2,1]", op.toJsonString());
+    }
+
+    @Test
+    void fromJsonAcceptsIntegerAndLongNumbers() {
+        TextOperation expected = new TextOperation().retain(3).insert("x").delete(2);
+        assertEquals(expected, TextOperation.fromJson(List.of(3, "x", -2)));
+        assertEquals(expected, TextOperation.fromJson(List.of(3L, "x", -2L)));
+    }
+
+    @Test
+    void fromJsonRejectsInvalidComponents() {
+        assertThrows(IllegalArgumentException.class, () -> TextOperation.fromJson(null));
+        assertThrows(IllegalArgumentException.class, () -> TextOperation.fromJson(List.of(0)));
+        assertThrows(IllegalArgumentException.class, () -> TextOperation.fromJson(List.of("")));
+        assertThrows(IllegalArgumentException.class, () -> TextOperation.fromJson(List.of(1.5)));
+        assertThrows(IllegalArgumentException.class, () -> TextOperation.fromJson(List.of(true)));
+        assertThrows(IllegalArgumentException.class, () -> TextOperation.fromJson(List.of(1L + Integer.MAX_VALUE)));
+    }
+
+    @Test
+    void fromJsonStringRejectsMalformedInput() {
+        for (String bad : new String[]{"", "[", "[1,]", "[1 2]", "[\"abc]", "[1]x", "{}", "[1.5]", "[-]", "[\"\\q\"]", "[\"\\u12\"]"}) {
+            assertThrows(IllegalArgumentException.class, () -> TextOperation.fromJsonString(bad));
+        }
+    }
+
+    @Test
+    void randomJsonStringRoundTripsAnyText() {
+        Random random = new Random(SEED);
+
+        for (int run = 0; run < RANDOM_RUNS; run++) {
+            TextOperation op = new TextOperation();
+            int parts = 1 + random.nextInt(5);
+            for (int i = 0; i < parts; i++) {
+                switch (random.nextInt(3)) {
+                    case 0 -> op.retain(1 + random.nextInt(1000));
+                    case 1 -> op.delete(1 + random.nextInt(1000));
+                    default -> op.insert(randomUnicode(random, 1 + random.nextInt(8)));
+                }
+            }
+
+            String json = op.toJsonString();
+            assertEquals(op, TextOperation.fromJsonString(json), () -> "Round trip failed for " + json);
+        }
+    }
+
+    // ---------- rebase ----------
+
+    /**
+     * A client's op made at an old revision is rebased past several ops the server applied since.
+     * The result must equal what the client sees: its own op first, then each server op transformed.
+     */
+    @Test
+    void randomRebaseOverSeveralOperationsConverges() {
+        Random random = new Random(SEED);
+
+        for (int run = 0; run < RANDOM_RUNS; run++) {
+            String base = randomText(random, random.nextInt(20));
+
+            List<TextOperation> history = new ArrayList<>();
+            String serverText = base;
+            int historyLength = random.nextInt(5);
+            for (int i = 0; i < historyLength; i++) {
+                TextOperation applied = randomOperation(random, serverText);
+                history.add(applied);
+                serverText = applied.apply(serverText);
+            }
+
+            TextOperation clientOp = randomOperation(random, base);
+
+            String serverResult = TextOperation.rebase(clientOp, history).apply(serverText);
+
+            String clientText = clientOp.apply(base);
+            TextOperation pending = clientOp;
+            for (TextOperation applied : history) {
+                TextOperation[] t = TextOperation.transform(applied, pending);
+                clientText = t[0].apply(clientText);
+                pending = t[1];
+            }
+
+            assertEquals(serverResult, clientText, () -> "Rebase diverged from base=\"" + base + "\"");
+        }
+    }
+
+    @Test
+    void rebaseWithNoHistoryReturnsSameOperation() {
+        TextOperation op = new TextOperation().retain(2).insert("x");
+        assertEquals(op, TextOperation.rebase(op, List.of()));
+    }
+
     // ---------- helpers ----------
 
     private static String randomText(Random random, int length) {
         StringBuilder builder = new StringBuilder(length);
         for (int i = 0; i < length; i++) {
             builder.append((char) ('a' + random.nextInt(26)));
+        }
+        return builder.toString();
+    }
+
+    /** Any UTF-16 char, including quotes, backslashes, control characters and surrogate halves. */
+    private static String randomUnicode(Random random, int length) {
+        String specials = "\"\\/\n\r\t\b\f\u0000\u001f\u007f\u00e9\u4e2d\ud83d\ude00";
+        StringBuilder builder = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            builder.append(random.nextBoolean()
+                    ? specials.charAt(random.nextInt(specials.length()))
+                    : (char) random.nextInt(0x10000));
         }
         return builder.toString();
     }
