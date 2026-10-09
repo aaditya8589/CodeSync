@@ -90,4 +90,9 @@ public ResponseEntity<String> handleRoomNotFound(
     public ResponseEntity<String> handleExecutionBusy(ExecutionBusyException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(exception.getMessage());
     }
+
+    @ExceptionHandler(InvalidRunRequestException.class)
+    public ResponseEntity<String> handleInvalidRunRequest(InvalidRunRequestException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(exception.getMessage());
+    }
 }

@@ -30,6 +30,27 @@ class CodeRunnerDockerTest {
     }
 
     @Test
+    void readsInput() {
+        ExecutionResult result = runner.runCpp("""
+                #include <iostream>
+                int main() { long long a, b; std::cin >> a >> b; std::cout << a + b << "\\n"; }
+                """, "3 4\n");
+        assertEquals(ExecutionStatus.SUCCESS, result.status(), result.stderr());
+        assertEquals("7\n", result.stdout());
+    }
+
+    @Test
+    void readsMultilineInputWithoutTrailingNewline() {
+        ExecutionResult result = runner.runCpp("""
+                #include <iostream>
+                #include <string>
+                int main() { std::string line; int n = 0; while (std::getline(std::cin, line)) n++; std::cout << n; }
+                """, "a\nb\nc");
+        assertEquals(ExecutionStatus.SUCCESS, result.status(), result.stderr());
+        assertEquals("3", result.stdout());
+    }
+
+    @Test
     void compileError() {
         ExecutionResult result = runner.runCpp("int main() { return 0 }");
         assertEquals(ExecutionStatus.COMPILE_ERROR, result.status());

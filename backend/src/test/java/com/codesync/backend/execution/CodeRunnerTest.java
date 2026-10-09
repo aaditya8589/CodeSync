@@ -50,6 +50,39 @@ class CodeRunnerTest {
     }
 
     @Test
+    void inputReachesTheProgramExactly() {
+        String input = "3 4\nline \u00e9 \ud83d\ude00\n\nno trailing newline";
+        ExecutionResult result = runner(Duration.ofSeconds(20)).runCpp("// FAKE_ECHO_INPUT \u00e9", input);
+        assertEquals(ExecutionStatus.SUCCESS, result.status());
+        assertEquals(input, result.stdout());
+    }
+
+    @Test
+    void emptyInputIsAllowed() {
+        ExecutionResult result = runner(Duration.ofSeconds(20)).runCpp("// FAKE_ECHO_INPUT", "");
+        assertEquals(ExecutionStatus.SUCCESS, result.status());
+        assertEquals("", result.stdout());
+    }
+
+    @Test
+    void payloadIsLengthHeaderThenSourceThenInput() {
+        byte[] payload = CodeRunner.buildPayload("\u00e9x", "in");
+        // "é" is 2 bytes in UTF-8, so the source is 3 bytes long
+        assertEquals("3\n\u00e9xin", new String(payload, java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void containerThatNeverReadsLargeInputIsStillKilledOnTime() {
+        long start = System.nanoTime();
+        String hugeInput = "x".repeat(5_000_000);
+        ExecutionResult result = runner(Duration.ofSeconds(3)).runCpp("// FAKE_IGNORES_INPUT", hugeInput);
+        long seconds = (System.nanoTime() - start) / 1_000_000_000;
+
+        assertEquals(ExecutionStatus.TIME_LIMIT_EXCEEDED, result.status());
+        assertTrue(seconds < 10, "took " + seconds + "s");
+    }
+
+    @Test
     void compileErrorIsRecognizedAndMarkerRemoved() {
         ExecutionResult result = run("// FAKE_COMPILE_ERROR");
         assertEquals(ExecutionStatus.COMPILE_ERROR, result.status());

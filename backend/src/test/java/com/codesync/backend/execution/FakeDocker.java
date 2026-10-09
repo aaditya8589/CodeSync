@@ -18,10 +18,25 @@ public class FakeDocker {
         }
 
         String name = args[indexOf(args, "--name") + 1];
-        String source = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);
+
+        // Same format the real container script reads: "<n>\n", n bytes of source, then input
+        int length = Integer.parseInt(readLine());
+        String source = new String(System.in.readNBytes(length), StandardCharsets.UTF_8);
+
+        if (source.contains("FAKE_IGNORES_INPUT")) {
+            while (!Files.exists(killFile(name))) Thread.sleep(50);
+            Files.delete(killFile(name));
+            System.exit(137);
+        }
+
+        String input = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);
 
         if (source.contains("FAKE_HELLO")) {
             System.out.print("hello\n");
+        } else if (source.contains("FAKE_ECHO_INPUT")) {
+            // Raw UTF-8 bytes, like real Docker; print() would use the platform's default encoding
+            System.out.write(input.getBytes(StandardCharsets.UTF_8));
+            System.out.flush();
         } else if (source.contains("FAKE_ECHO_ARGS")) {
             System.out.print(String.join(" ", args));
         } else if (source.contains("FAKE_COMPILE_ERROR")) {
@@ -46,6 +61,16 @@ public class FakeDocker {
             Files.delete(killFile(name));
             System.exit(137);
         }
+    }
+
+    private static String readLine() throws IOException {
+        StringBuilder line = new StringBuilder();
+        int c;
+        while ((c = System.in.read()) != '\n') {
+            if (c == -1) throw new IOException("missing header line");
+            line.append((char) c);
+        }
+        return line.toString();
     }
 
     static Path killFile(String containerName) throws IOException {

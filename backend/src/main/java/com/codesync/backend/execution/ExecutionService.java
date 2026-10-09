@@ -3,6 +3,7 @@ package com.codesync.backend.execution;
 import com.codesync.backend.entity.Document;
 import com.codesync.backend.exception.DocumentNotFoundException;
 import com.codesync.backend.exception.ExecutionBusyException;
+import com.codesync.backend.exception.InvalidRunRequestException;
 import com.codesync.backend.exception.UnsupportedLanguageException;
 import com.codesync.backend.repository.DocumentRepository;
 import com.codesync.backend.service.RoomService;
@@ -11,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -20,6 +22,8 @@ import java.util.concurrent.Semaphore;
 public class ExecutionService {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutionService.class);
+
+    public static final int MAX_INPUT_BYTES = 64 * 1024;
 
     private final DocumentRepository documentRepository;
     private final RoomService roomService;
@@ -42,8 +46,13 @@ public class ExecutionService {
 
     // Deliberately not @Transactional: a run can take seconds, and it must not hold a
     // database connection while it waits for Docker.
-    public ExecutionResult run(UUID roomId, UUID documentId, String username) {
+    public ExecutionResult run(UUID roomId, UUID documentId, String stdin, String username) {
         roomService.checkRoomAccess(roomId, username);
+
+        String input = stdin == null ? "" : stdin;
+        if (input.getBytes(StandardCharsets.UTF_8).length > MAX_INPUT_BYTES) {
+            throw new InvalidRunRequestException("Input is larger than " + (MAX_INPUT_BYTES / 1024) + " KB");
+        }
 
         // Runs the saved, server-side copy: everyone in the room runs the same code
         Document document = documentRepository
@@ -59,7 +68,7 @@ public class ExecutionService {
         }
 
         try {
-            ExecutionResult result = codeRunner.runCpp(document.getContent());
+            ExecutionResult result = codeRunner.runCpp(document.getContent(), input);
             log.info("Run by {} of {}: {} in {} ms",
                     username, document.getFileName(), result.status(), result.durationMs());
             if (result.status() == ExecutionStatus.INTERNAL_ERROR) {

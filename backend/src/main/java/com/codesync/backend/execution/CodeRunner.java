@@ -13,7 +13,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Compiles and runs one C++ program in a throw-away Docker container.
- * The source goes in through stdin, so no host folders are mounted into the container.
+ * Source and input both go in through stdin, so no host folders are mounted into the container:
+ * a header line with the source's length in bytes, then the source, then the program's input.
  */
 public class CodeRunner {
 
@@ -44,12 +45,16 @@ public class CodeRunner {
     }
 
     List<String> buildRunCommand(String containerName) {
-        // Compile errors are reported with a marker so they are not confused with the
-        // program's own stderr. timeout exits 124 when the time limit is hit.
-        String script = "cat > /tmp/main.cpp"
+        // dd with iflag=fullblock copies exactly n bytes, so everything after the source is
+        // left for input.txt. Compile errors are flagged with a marker so they are not confused
+        // with the program's own stderr. timeout exits 124 when the time limit is hit.
+        String script = "read -r n"
+                + " && if [ \"$n\" -gt 0 ]; then dd of=/tmp/main.cpp bs=\"$n\" count=1 iflag=fullblock status=none;"
+                + " else : > /tmp/main.cpp; fi"
+                + " && cat > /tmp/input.txt"
                 + " && if ! g++ -O2 -std=c++17 -o /tmp/main /tmp/main.cpp 2> /tmp/compile.txt; then"
                 + " echo " + COMPILE_ERROR_MARKER + " >&2; cat /tmp/compile.txt >&2; exit 1; fi"
-                + " && exec timeout -k 1 " + runSeconds + " /tmp/main";
+                + " && exec timeout -k 1 " + runSeconds + " /tmp/main < /tmp/input.txt";
 
         List<String> command = new ArrayList<>(dockerCommand);
         command.addAll(List.of(
@@ -72,6 +77,10 @@ public class CodeRunner {
     }
 
     public ExecutionResult runCpp(String source) {
+        return runCpp(source, "");
+    }
+
+    public ExecutionResult runCpp(String source, String input) {
         String containerName = "codesync-run-" + UUID.randomUUID();
         long start = System.nanoTime();
 
@@ -88,11 +97,16 @@ public class CodeRunner {
         OutputCollector stdout = OutputCollector.start(process.getInputStream(), maxOutputBytes);
         OutputCollector stderr = OutputCollector.start(process.getErrorStream(), maxOutputBytes);
 
-        try (OutputStream stdin = process.getOutputStream()) {
-            stdin.write(source.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException ignored) {
-            // Docker exited before reading the source; its stderr explains why
-        }
+        byte[] payload = buildPayload(source, input);
+        // On its own thread: if the container stops reading, a blocked write must not keep
+        // us from reaching the wall-clock limit below
+        Thread.ofVirtual().start(() -> {
+            try (OutputStream stdin = process.getOutputStream()) {
+                stdin.write(payload);
+            } catch (IOException ignored) {
+                // Docker exited before reading everything; its stderr explains why
+            }
+        });
 
         boolean finished;
         try {
@@ -138,6 +152,18 @@ public class CodeRunner {
         };
 
         return new ExecutionResult(status, out, err, exitCode, durationMs, truncated);
+    }
+
+    static byte[] buildPayload(String source, String input) {
+        byte[] sourceBytes = source.getBytes(StandardCharsets.UTF_8);
+        byte[] inputBytes = input.getBytes(StandardCharsets.UTF_8);
+        byte[] header = (sourceBytes.length + "\n").getBytes(StandardCharsets.US_ASCII);
+
+        byte[] payload = new byte[header.length + sourceBytes.length + inputBytes.length];
+        System.arraycopy(header, 0, payload, 0, header.length);
+        System.arraycopy(sourceBytes, 0, payload, header.length, sourceBytes.length);
+        System.arraycopy(inputBytes, 0, payload, header.length + sourceBytes.length, inputBytes.length);
+        return payload;
     }
 
     private boolean isDockerUnavailable(int exitCode, String stderr) {

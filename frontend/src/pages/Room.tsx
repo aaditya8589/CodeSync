@@ -27,6 +27,7 @@ function Room() {
   const [editorReady, setEditorReady] = useState(false)
   const [output, setOutput] = useState("No output yet.")
   const [running, setRunning] = useState(false)
+  const [stdin, setStdin] = useState("")
 
   const editorRef = useRef<CodeEditorHandle>(null)
   // Only the newest reload may apply its result
@@ -104,7 +105,7 @@ function Room() {
     setRunning(true)
     setOutput("Compiling and running...")
     try {
-      setOutput(formatResult(await runDocument(roomId, activeDocumentId)))
+      setOutput(formatResult(await runDocument(roomId, activeDocumentId, stdin)))
     } catch (error) {
       setOutput(error instanceof Error ? error.message : "Run failed")
     } finally {
@@ -169,6 +170,18 @@ function Room() {
           ) : (
             <p>This room has no files yet.</p>
           )}
+
+          <section>
+            <h3>Input</h3>
+            <textarea
+              value={stdin}
+              onChange={(event) => setStdin(event.target.value)}
+              placeholder="Input for your program (stdin)"
+              rows={5}
+              cols={60}
+              spellCheck={false}
+            />
+          </section>
 
           <OutputPanel output={output} />
         </main>

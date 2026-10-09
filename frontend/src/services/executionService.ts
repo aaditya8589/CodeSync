@@ -17,7 +17,11 @@ export interface ExecutionResult {
   outputTruncated: boolean
 }
 
-export async function runDocument(roomId: string, documentId: string): Promise<ExecutionResult> {
+export async function runDocument(
+  roomId: string,
+  documentId: string,
+  stdin: string
+): Promise<ExecutionResult> {
   const token = localStorage.getItem("token")
 
   if (!token) {
@@ -30,7 +34,9 @@ export async function runDocument(roomId: string, documentId: string): Promise<E
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({ stdin }),
     }
   )
 
