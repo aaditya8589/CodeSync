@@ -6,6 +6,7 @@ import {
   type Room as RoomType,
 } from "../services/roomService"
 import { getDocuments, type RoomDocument } from "../services/documentService"
+import { formatResult, runDocument } from "../services/executionService"
 
 import RoomHeader from "../components/RoomHeader"
 import FileExplorer from "../components/FileExplorer"
@@ -25,6 +26,7 @@ function Room() {
   const [error, setError] = useState("")
   const [editorReady, setEditorReady] = useState(false)
   const [output, setOutput] = useState("No output yet.")
+  const [running, setRunning] = useState(false)
 
   const editorRef = useRef<CodeEditorHandle>(null)
   // Only the newest reload may apply its result
@@ -96,6 +98,20 @@ function Room() {
     onResyncNeeded: handleResyncNeeded,
   })
 
+  const handleRun = async () => {
+    if (!roomId || !activeDocumentId) return
+
+    setRunning(true)
+    setOutput("Compiling and running...")
+    try {
+      setOutput(formatResult(await runDocument(roomId, activeDocumentId)))
+    } catch (error) {
+      setOutput(error instanceof Error ? error.message : "Run failed")
+    } finally {
+      setRunning(false)
+    }
+  }
+
   if (loading) {
     return <p>Loading room...</p>
   }
@@ -160,11 +176,10 @@ function Room() {
 
       <button
         type="button"
-        onClick={() => {
-          setOutput("Code execution is not connected yet.")
-        }}
+        onClick={handleRun}
+        disabled={running || !ready || !activeDocument}
       >
-        Run Code
+        {running ? "Running..." : "Run Code"}
       </button>
 
       <br />

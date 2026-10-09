@@ -75,4 +75,19 @@ public ResponseEntity<String> handleRoomNotFound(
             .status(HttpStatus.NOT_FOUND)
             .body(exception.getMessage());
 }
+
+    @ExceptionHandler(DocumentNotFoundException.class)
+    public ResponseEntity<String> handleDocumentNotFound(DocumentNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(exception.getMessage());
+    }
+
+    @ExceptionHandler(UnsupportedLanguageException.class)
+    public ResponseEntity<String> handleUnsupportedLanguage(UnsupportedLanguageException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(exception.getMessage());
+    }
+
+    @ExceptionHandler(ExecutionBusyException.class)
+    public ResponseEntity<String> handleExecutionBusy(ExecutionBusyException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(exception.getMessage());
+    }
 }
