@@ -1,0 +1,19 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+
+	# WebSocket upgrades are proxied automatically
+	handle /ws* {
+		reverse_proxy backend:8080
+	}
+
+	# Everything else is the React app; unknown paths like /rooms/<id> get index.html
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

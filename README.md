@@ -145,6 +145,10 @@ $bytes = New-Object byte[] 48
 [Convert]::ToBase64String($bytes)
 ```
 
+## Deployment
+
+CodeSync runs on any Linux server with Docker using `deploy/docker-compose.yml`: Caddy (HTTPS and the React app), the backend, and PostgreSQL. A step-by-step guide for a free Oracle Cloud server is in [deploy/README.md](deploy/README.md).
+
 ## Project structure
 
 ```
