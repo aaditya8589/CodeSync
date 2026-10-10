@@ -5,7 +5,7 @@ import {
   getRoom,
   type Room as RoomType,
 } from "../services/roomService"
-import { getDocuments, type RoomDocument } from "../services/documentService"
+import { createDocument, getDocuments, type RoomDocument } from "../services/documentService"
 import { formatResult, runDocument } from "../services/executionService"
 
 import RoomHeader from "../components/RoomHeader"
@@ -17,6 +17,7 @@ import HistoryPanel from "../components/HistoryPanel"
 import useCodeSync, { type RemoteCursor } from "../hooks/useCodeSync"
 import type { TextOperation } from "../ot/textOperation"
 import { colorFor } from "../presence/colors"
+import { isRunnable, runLabel } from "../editor/language"
 
 function Room() {
   const { roomId } = useParams<{ roomId: string }>()
@@ -92,6 +93,24 @@ function Room() {
     void resync(reason)
   }, [resync])
 
+  const handleCreateFile = async (fileName: string) => {
+    if (!roomId) return
+    const created = await createDocument(roomId, fileName)
+
+    // Load the list here instead of through resync(): a reload triggered by the server's
+    // "file added" message could otherwise win, and the switch below would happen before
+    // the editor has a model for the new file. Counting this as the newest reload discards
+    // any older one still in flight.
+    const request = ++resyncRequestRef.current
+    const fresh = await getDocuments(roomId)
+    // If a newer reload started meanwhile, it shows the new file; stay on the current one
+    // rather than switch to a file this render does not have yet
+    if (request !== resyncRequestRef.current) return
+    editorRef.current?.reset(fresh)
+    setDocuments(fresh)
+    setActiveDocumentId(created.id)
+  }
+
   const handleRemoteCursor = useCallback((cursor: RemoteCursor) => {
     editorRef.current?.setRemoteCursor(cursor)
   }, [])
@@ -145,6 +164,7 @@ function Room() {
   }
 
   const activeDocument = documents.find((doc) => doc.id === activeDocumentId)
+  const runnable = activeDocument ? isRunnable(activeDocument.fileName) : false
 
   return (
     <div>
@@ -180,6 +200,7 @@ function Room() {
             const doc = documents.find((d) => d.fileName === fileName)
             if (doc) setActiveDocumentId(doc.id)
           }}
+          onCreateFile={handleCreateFile}
         />
 
         <main>
@@ -236,9 +257,10 @@ function Room() {
       <button
         type="button"
         onClick={handleRun}
-        disabled={running || !ready || !activeDocument}
+        disabled={running || !ready || !runnable}
+        title={runnable ? undefined : "Only .cpp, .py and .java files can be run"}
       >
-        {running ? "Running..." : "Run Code"}
+        {running ? "Running..." : `Run ${activeDocument ? runLabel(activeDocument.fileName) : "Code"}`}
       </button>
 
       <br />

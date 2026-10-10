@@ -138,7 +138,16 @@ function HistoryPanel({ roomId, documentId, fileName, getCurrentContent, onClose
                   modifiedModelPath="inmemory://codesync-history/current"
                   keepCurrentOriginalModel
                   keepCurrentModifiedModel
-                  options={{ readOnly: true, originalEditable: false, renderSideBySide: true, minimap: { enabled: false } }}
+                  // The gutter menu (revert arrows) is pointless in a read-only view, and its lazily built
+                  // actions threw "AbstractContextKeyService has been disposed" when the dialog closed
+                  options={{
+                    readOnly: true,
+                    originalEditable: false,
+                    renderSideBySide: true,
+                    renderGutterMenu: false,
+                    renderMarginRevertIcon: false,
+                    minimap: { enabled: false },
+                  }}
                 />
                 <div style={{ marginTop: 8 }}>
                   {confirming ? (
