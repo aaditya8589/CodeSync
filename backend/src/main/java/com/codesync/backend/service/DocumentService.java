@@ -4,14 +4,19 @@ import com.codesync.backend.dto.DocumentResponse;
 import com.codesync.backend.entity.Document;
 import com.codesync.backend.entity.DocumentOperation;
 import com.codesync.backend.exception.DocumentNotFoundException;
+import com.codesync.backend.exception.DuplicateFileException;
+import com.codesync.backend.exception.InvalidFileNameException;
+import com.codesync.backend.exception.RoomNotFoundException;
 import com.codesync.backend.exception.InvalidRevisionException;
 import com.codesync.backend.history.DocumentHistoryService;
 import com.codesync.backend.exception.ResyncRequiredException;
 import com.codesync.backend.ot.TextOperation;
 import com.codesync.backend.repository.DocumentOperationRepository;
 import com.codesync.backend.repository.DocumentRepository;
+import com.codesync.backend.repository.RoomRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,17 +37,59 @@ public class DocumentService {
     private final DocumentOperationRepository documentOperationRepository;
     private final RoomService roomService;
     private final DocumentHistoryService historyService;
+    private final RoomRepository roomRepository;
 
     public DocumentService(
             DocumentRepository documentRepository,
             DocumentOperationRepository documentOperationRepository,
             RoomService roomService,
-            DocumentHistoryService historyService
+            DocumentHistoryService historyService,
+            RoomRepository roomRepository
     ) {
         this.documentRepository = documentRepository;
         this.documentOperationRepository = documentOperationRepository;
         this.roomService = roomService;
         this.historyService = historyService;
+        this.roomRepository = roomRepository;
+    }
+
+    @Transactional
+    public DocumentResponse createDocument(UUID roomId, String fileName, String username) {
+        roomService.checkRoomAccess(roomId, username);
+
+        String name = fileName == null ? null : fileName.strip();
+        String problem = FileTemplates.problemWith(name);
+        if (problem != null) {
+            throw new InvalidFileNameException(problem);
+        }
+        if (documentRepository.countByRoomId(roomId) >= FileTemplates.MAX_FILES_PER_ROOM) {
+            throw new InvalidFileNameException(
+                    "A room can have at most " + FileTemplates.MAX_FILES_PER_ROOM + " files");
+        }
+        if (documentRepository.existsByRoomIdAndFileNameIgnoreCase(roomId, name)) {
+            throw new DuplicateFileException("A file named " + name + " already exists in this room");
+        }
+
+        Document document;
+        try {
+            document = documentRepository.saveAndFlush(new Document(
+                    roomRepository.findById(roomId).orElseThrow(() -> new RoomNotFoundException("Room not found")),
+                    name,
+                    FileTemplates.starterContent(name)
+            ));
+        } catch (DataIntegrityViolationException exception) {
+            // Two people created the same name at the same moment; the unique constraint caught it
+            throw new DuplicateFileException("A file named " + name + " already exists in this room");
+        }
+
+        log.info("{} created {} in room {}", username, name, roomId);
+        return new DocumentResponse(
+                document.getId(),
+                document.getFileName(),
+                document.getContent(),
+                document.getUpdatedAt(),
+                document.getRevision()
+        );
     }
 
     @Transactional(readOnly = true)

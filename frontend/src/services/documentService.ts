@@ -31,3 +31,25 @@ export async function getDocuments(roomId: string): Promise<RoomDocument[]> {
 
   return response.json()
 }
+export async function createDocument(roomId: string, fileName: string): Promise<RoomDocument> {
+  const token = localStorage.getItem("token")
+
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/documents`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fileName }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await response.text() || `Could not create the file: ${response.status}`)
+  }
+
+  return response.json()
+}

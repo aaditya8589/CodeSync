@@ -105,4 +105,14 @@ public ResponseEntity<String> handleRoomNotFound(
     public ResponseEntity<String> handleInvalidRevision(InvalidRevisionException exception) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(exception.getMessage());
     }
+
+    @ExceptionHandler(InvalidFileNameException.class)
+    public ResponseEntity<String> handleInvalidFileName(InvalidFileNameException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(exception.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateFileException.class)
+    public ResponseEntity<String> handleDuplicateFile(DuplicateFileException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(exception.getMessage());
+    }
 }

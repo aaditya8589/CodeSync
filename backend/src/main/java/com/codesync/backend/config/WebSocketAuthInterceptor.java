@@ -29,7 +29,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     // The only room destinations a client may subscribe to. Anything else, including
     // wildcard patterns like /topic/rooms/**, is rejected.
     private static final Pattern ROOM_TOPIC =
-            Pattern.compile("^/topic/rooms/([0-9a-fA-F-]{36})/(code|presence|cursors)$");
+            Pattern.compile("^/topic/rooms/([0-9a-fA-F-]{36})/(code|presence|cursors|files)$");
 
     // Each user's private channel for rejected operations. Spring resolves it to the
     // subscriber's own sessions, so no room check is needed.

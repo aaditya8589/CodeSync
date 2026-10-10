@@ -92,6 +92,7 @@ function CodeEditor({
   ref,
 }: CodeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null)
   // One Monaco model per document, so each file keeps its own undo history
   const modelsRef = useRef(new Map<string, editor.ITextModel>())
   const viewStatesRef = useRef(new Map<string, editor.ICodeEditorViewState | null>())
@@ -219,7 +220,17 @@ function CodeEditor({
 
       for (const doc of freshDocuments) {
         const model = modelsRef.current.get(doc.id)
-        if (!model || model.getValue() === doc.content) continue
+        if (!model) {
+          // A file someone created after this editor opened
+          const monaco = monacoRef.current
+          if (monaco) {
+            const uri = monaco.Uri.parse(`inmemory://codesync/${doc.id}`)
+            monaco.editor.getModel(uri)?.dispose()
+            modelsRef.current.set(doc.id, monaco.editor.createModel(doc.content, languageFor(doc.fileName), uri))
+          }
+          continue
+        }
+        if (model.getValue() === doc.content) continue
 
         applyingRemoteRef.current = true
         try {
@@ -241,6 +252,7 @@ function CodeEditor({
 
   const handleMount: OnMount = (editorInstance, monaco) => {
     editorRef.current = editorInstance
+    monacoRef.current = monaco
     installColorClasses()
 
     for (const doc of documents) {

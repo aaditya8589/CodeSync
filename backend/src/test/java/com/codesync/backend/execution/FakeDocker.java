@@ -42,6 +42,9 @@ public class FakeDocker {
         } else if (source.contains("FAKE_COMPILE_ERROR")) {
             System.err.print(CodeRunner.COMPILE_ERROR_MARKER + "\nmain.cpp:1:1: error: expected ';'\n");
             System.exit(1);
+        } else if (source.contains("FAKE_JAVA_OOM")) {
+            System.err.print("Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space\n\tat Main.main(Main.java:3)\n");
+            System.exit(1);
         } else if (source.contains("FAKE_CRASH")) {
             System.err.print("boom\n");
             System.exit(3);

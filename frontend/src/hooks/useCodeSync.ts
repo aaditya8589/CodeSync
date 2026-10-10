@@ -251,6 +251,10 @@ function useCodeSync({
         client.subscribe(`/topic/rooms/${roomId}/code`, (frame) => {
           handleBroadcast(JSON.parse(frame.body))
         })
+        // Someone added a file: reload so it gets a model and its own sync state
+        client.subscribe(`/topic/rooms/${roomId}/files`, () => {
+          requestResync("a file was added")
+        })
         client.subscribe(`/topic/rooms/${roomId}/presence`, (frame) => {
           setMembers(JSON.parse(frame.body).members)
           // Someone joined or left: send our cursor again so a newcomer sees it

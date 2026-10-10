@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
 
@@ -35,12 +36,19 @@ public class ExecutionService {
             DocumentRepository documentRepository,
             RoomService roomService,
             @Value("${codesync.execution.docker-command:docker}") String dockerCommand,
-            @Value("${codesync.execution.image:gcc:14}") String image,
+            @Value("${codesync.execution.image.cpp}") String cppImage,
+            @Value("${codesync.execution.image.python}") String pythonImage,
+            @Value("${codesync.execution.image.java}") String javaImage,
             @Value("${codesync.execution.max-concurrent:2}") int maxConcurrent
     ) {
         this.documentRepository = documentRepository;
         this.roomService = roomService;
-        this.codeRunner = new CodeRunner(List.of(dockerCommand), image, 2, Duration.ofSeconds(20), 64 * 1024);
+        this.codeRunner = new CodeRunner(
+                List.of(dockerCommand),
+                Map.of(Language.CPP, cppImage, Language.PYTHON, pythonImage, Language.JAVA, javaImage),
+                Duration.ofSeconds(20),
+                64 * 1024
+        );
         this.slots = new Semaphore(maxConcurrent);
     }
 
@@ -59,16 +67,16 @@ public class ExecutionService {
                 .findByIdAndRoomId(documentId, roomId)
                 .orElseThrow(() -> new DocumentNotFoundException("Document not found in this room"));
 
-        if (!document.getFileName().endsWith(".cpp")) {
-            throw new UnsupportedLanguageException("Only C++ (.cpp) files can be run so far");
-        }
+        Language language = Language.fromFileName(document.getFileName())
+                .orElseThrow(() -> new UnsupportedLanguageException(
+                        "Only C++ (.cpp), Python (.py) and Java (.java) files can be run"));
 
         if (!slots.tryAcquire()) {
             throw new ExecutionBusyException("The code runner is busy. Try again in a few seconds.");
         }
 
         try {
-            ExecutionResult result = codeRunner.runCpp(document.getContent(), input);
+            ExecutionResult result = codeRunner.run(language, document.getContent(), input);
             log.info("Run by {} of {}: {} in {} ms",
                     username, document.getFileName(), result.status(), result.durationMs());
             if (result.status() == ExecutionStatus.INTERNAL_ERROR) {

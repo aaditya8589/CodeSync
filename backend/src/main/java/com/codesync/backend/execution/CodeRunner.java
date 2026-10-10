@@ -7,12 +7,14 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Compiles and runs one C++ program in a throw-away Docker container.
+ * Compiles and runs one program in a throw-away Docker container, using the image for its language.
  * Source and input both go in through stdin, so no host folders are mounted into the container:
  * a header line with the source's length in bytes, then the source, then the program's input.
  */
@@ -25,36 +27,41 @@ public class CodeRunner {
     private static final int DOCKER_RUN_FAILED_EXIT_CODE = 125;
 
     private final List<String> dockerCommand;
-    private final String image;
-    private final int runSeconds;
+    private final Map<Language, String> images;
     private final Duration wallClockLimit;
     private final int maxOutputBytes;
 
     public CodeRunner(
             List<String> dockerCommand,
-            String image,
-            int runSeconds,
+            Map<Language, String> images,
             Duration wallClockLimit,
             int maxOutputBytes
     ) {
         this.dockerCommand = List.copyOf(dockerCommand);
-        this.image = image;
-        this.runSeconds = runSeconds;
+        this.images = new EnumMap<>(images);
         this.wallClockLimit = wallClockLimit;
         this.maxOutputBytes = maxOutputBytes;
     }
 
-    List<String> buildRunCommand(String containerName) {
+    List<String> buildRunCommand(Language language, String source, String containerName) {
+        String file = "/tmp/" + language.sourceFile(source);
+
         // dd with iflag=fullblock copies exactly n bytes, so everything after the source is
         // left for input.txt. Compile errors are flagged with a marker so they are not confused
         // with the program's own stderr. timeout exits 124 when the time limit is hit.
         String script = "read -r n"
-                + " && if [ \"$n\" -gt 0 ]; then dd of=/tmp/main.cpp bs=\"$n\" count=1 iflag=fullblock status=none;"
-                + " else : > /tmp/main.cpp; fi"
+                + " && if [ \"$n\" -gt 0 ]; then dd of=" + file + " bs=\"$n\" count=1 iflag=fullblock status=none;"
+                + " else : > " + file + "; fi"
                 + " && cat > /tmp/input.txt"
-                + " && if ! g++ -O2 -std=c++17 -o /tmp/main /tmp/main.cpp 2> /tmp/compile.txt; then"
+                + " && if ! " + language.compileCommand(source) + " 2> /tmp/compile.txt; then"
                 + " echo " + COMPILE_ERROR_MARKER + " >&2; cat /tmp/compile.txt >&2; exit 1; fi"
-                + " && exec timeout -k 1 " + runSeconds + " /tmp/main < /tmp/input.txt";
+                + " && exec timeout -k 1 " + language.timeLimitSeconds() + " "
+                + language.runCommand(source) + " < /tmp/input.txt";
+
+        String image = images.get(language);
+        if (image == null) {
+            throw new IllegalStateException("No image configured for " + language.displayName());
+        }
 
         List<String> command = new ArrayList<>(dockerCommand);
         command.addAll(List.of(
@@ -76,17 +83,17 @@ public class CodeRunner {
         return command;
     }
 
-    public ExecutionResult runCpp(String source) {
-        return runCpp(source, "");
+    public ExecutionResult run(Language language, String source) {
+        return run(language, source, "");
     }
 
-    public ExecutionResult runCpp(String source, String input) {
+    public ExecutionResult run(Language language, String source, String input) {
         String containerName = "codesync-run-" + UUID.randomUUID();
         long start = System.nanoTime();
 
         Process process;
         try {
-            ProcessBuilder builder = new ProcessBuilder(buildRunCommand(containerName));
+            ProcessBuilder builder = new ProcessBuilder(buildRunCommand(language, source, containerName));
             // Stops Docker Desktop from appending its "What's next" adverts to stderr
             builder.environment().put("DOCKER_CLI_HINTS", "false");
             process = builder.start();
@@ -148,7 +155,7 @@ public class CodeRunner {
             case 0 -> ExecutionStatus.SUCCESS;
             case TIMEOUT_EXIT_CODE -> ExecutionStatus.TIME_LIMIT_EXCEEDED;
             case KILLED_EXIT_CODE -> ExecutionStatus.MEMORY_LIMIT_EXCEEDED;
-            default -> ExecutionStatus.RUNTIME_ERROR;
+            default -> ranOutOfMemory(err) ? ExecutionStatus.MEMORY_LIMIT_EXCEEDED : ExecutionStatus.RUNTIME_ERROR;
         };
 
         return new ExecutionResult(status, out, err, exitCode, durationMs, truncated);
@@ -164,6 +171,12 @@ public class CodeRunner {
         System.arraycopy(sourceBytes, 0, payload, header.length, sourceBytes.length);
         System.arraycopy(inputBytes, 0, payload, header.length + sourceBytes.length, inputBytes.length);
         return payload;
+    }
+
+    // Java and Python report running out of memory themselves before the container is killed
+    static boolean ranOutOfMemory(String stderr) {
+        String trimmed = stderr.strip();
+        return trimmed.contains("java.lang.OutOfMemoryError") || trimmed.endsWith("MemoryError");
     }
 
     private boolean isDockerUnavailable(int exitCode, String stderr) {

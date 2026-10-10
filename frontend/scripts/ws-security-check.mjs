@@ -83,6 +83,12 @@ await attempt("5. Subscribe to the room's cursors", 1500, (client) => {
   })
 })
 
+await attempt("5b. Subscribe to the room's file notifications", 1500, (client) => {
+  client.subscribe(`/topic/rooms/${roomId}/files`, (message) => {
+    console.log(`   LEAKED: ${message.body.slice(0, 120)}`)
+  })
+})
+
 // Sending to /app is allowed, so this one is checked in the browser: the server must ignore it
 await attempt("6. Join the room's presence and send a cursor", 1500, (client) => {
   client.publish({

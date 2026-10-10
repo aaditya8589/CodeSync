@@ -12,7 +12,8 @@ A real-time collaborative code editor: several people edit the same files at the
 - **Live cursors and presence.** Everyone sees who is in the room and where each person's caret and selection are, with a coloured name label, kept exact while both sides type.
 - **Version history.** Browse earlier versions of a file (edits grouped by pauses, with who made them), compare any version with the current file side by side, and restore it for everyone in the room.
 - **Server-authoritative documents.** Every edit is validated, rebased and saved by the server; refreshing, joining late or restarting the server keeps the code.
-- **Sandboxed C++ execution with input.** Run Code compiles and runs the room's saved code in a throw-away Docker container with no network and hard limits, and reports judge-style results (compile error, runtime error, time limit, memory limit).
+- **Sandboxed execution of C++, Python and Java, with input.** Run compiles and runs the room's saved code in a throw-away Docker container with no network and hard limits, and reports judge-style results (compile error, runtime error, time limit, memory limit).
+- **Files.** Anyone in the room can add files (`.cpp`, `.py`, `.java`, `.txt`, ...), which start with a template for their language and appear in everyone's file list immediately.
 - **Rooms and access control.** JWT authentication, room membership checked on every REST call, WebSocket subscription and edit.
 
 ## Architecture
@@ -30,7 +31,7 @@ flowchart LR
     end
     DS --> PG[(PostgreSQL<br/>documents + operation log)]
     ES --> PG
-    ES -- docker run --> C[Container gcc:14<br/>no network, 256 MB, 1 CPU, 2 s]
+    ES -- docker run --> C[Container gcc / python / temurin<br/>no network, 256 MB, 1 CPU]
 ```
 
 ### Edit flow
@@ -62,10 +63,18 @@ Every run gets a fresh container:
 ```
 docker run --rm -i --network none --memory 256m --memory-swap 256m --cpus 1 --pids-limit 64
   --read-only --tmpfs /tmp:rw,exec,size=64m --user 1000:1000 --cap-drop ALL
-  --security-opt no-new-privileges gcc:14 ...
+  --security-opt no-new-privileges <image for the language> ...
 ```
 
-The program is limited to 2 seconds (`timeout`), the whole run to 20 seconds (after which the container is killed by name), and output to 64 KB per stream. CI runs real attacks against it on every push: infinite loop, memory bomb, fork bomb, network access, output flood and writing outside `/tmp`.
+| Language | Image | Check before running | Time limit |
+|---|---|---|---|
+| C++ (`.cpp`, `.cc`) | `gcc:14` | `g++ -O2 -std=c++17` | 2 s |
+| Python (`.py`) | `python:3.13-slim` | `python3 -m py_compile` (syntax errors are reported like compile errors) | 5 s |
+| Java (`.java`) | `eclipse-temurin:21-jdk` | `javac`; the file is named after the program's `public class`, so `Solution` works as well as `Main` | 4 s |
+
+The time limit applies to the program only; the whole run is limited to 20 seconds (after which the container is killed by name), and output to 64 KB per stream. A Java `OutOfMemoryError` or Python `MemoryError` counts as a memory limit. CI runs real attacks in every language on every push: infinite loop, memory bomb, fork bomb, network access, output flood and writing outside `/tmp`.
+
+The class name taken from Java source goes into a shell command, so only a plain identifier is accepted; anything else falls back to `Main`.
 
 ## Testing
 
@@ -75,7 +84,8 @@ The program is limited to 2 seconds (`timeout`), the whole run to 20 seconds (af
 | OT core and client (TypeScript) | 40: the same algorithm, 500 simulated three-client sessions with delays and reordering, Monaco change conversion, and 300 sessions checking that every remote cursor lands on exactly the right character |
 | Version history (Java) | 11: grouping edits into versions, and against the real database: every one of 250 revisions rebuilt exactly across snapshots, restore and undoing a restore, history that starts after older edits, invalid revisions, non-members |
 | Presence (Java) | 15: the presence registry, and the controller rejecting cursors from connections that did not pass the room check |
-| Code runner | 15 with a fake `docker` (every outcome including hung containers and Docker being down) and 11 against real Docker |
+| Code runner | 20 with a fake `docker` (every outcome including hung containers and Docker being down, each language's command and image), 3 for language detection, and 25 against real Docker in all three languages |
+| Files | 4 for file names and templates, 6 against the real database (creation, case-insensitive duplicates, invalid names, the 20-file limit, non-members) |
 | Integration scripts | `frontend/scripts/ot-server-check.mjs` (two clients against the running server) and `frontend/scripts/ws-security-check.mjs` (a non-member trying to read, inject, and join presence) |
 
 The Java and TypeScript OT implementations were cross-checked to produce identical results on 5,000 random cases. Mutation tests confirmed the suites fail when key parts of the algorithm are broken.
@@ -88,6 +98,8 @@ Requirements: Java 21+, Node 22+, PostgreSQL, Docker Desktop.
 # once: create the database and pull the compiler image
 psql -U postgres -c "CREATE DATABASE codesync"
 docker pull gcc:14
+docker pull python:3.13-slim
+docker pull eclipse-temurin:21-jdk
 
 # backend (http://localhost:8080)
 cd backend
@@ -121,6 +133,7 @@ All secrets and environment-specific values come from environment variables, so 
 | `DB_USERNAME` | no | `postgres` | Database user |
 | `CORS_ALLOWED_ORIGINS` | no | `http://localhost:5173` | Comma-separated frontend URLs allowed to call the API and open WebSockets |
 | `JWT_EXPIRATION_MINUTES` | no | `60` | How long a login lasts |
+| `CODESYNC_IMAGE_CPP`, `CODESYNC_IMAGE_PYTHON`, `CODESYNC_IMAGE_JAVA` | no | `gcc:14`, `python:3.13-slim`, `eclipse-temurin:21-jdk` | Image used to run each language |
 | `SHOW_SQL` | no | `false` | Log every SQL query |
 | `VITE_API_URL` (frontend, at build time) | no | `http://localhost:8080` | Backend URL; the WebSocket URL is derived from it |
 
@@ -148,7 +161,6 @@ frontend/src
 
 ## Known limitations
 
-- Only C++ can be run so far.
 - Undo also undoes other people's edits (collaborative undo is not implemented).
 - Edits typed while disconnected are discarded on reconnect; the editor is read-only while disconnected.
 - The operation log is never compacted.

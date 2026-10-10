@@ -43,8 +43,11 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Pull the sandbox image
-        run: docker pull gcc:14
+      - name: Pull the sandbox images
+        run: |
+          docker pull gcc:14
+          docker pull python:3.13-slim
+          docker pull eclipse-temurin:21-jdk
 
       - name: Run all backend tests
         run: ./mvnw -B test

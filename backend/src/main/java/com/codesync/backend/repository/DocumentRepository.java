@@ -17,6 +17,11 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     Optional<Document> findByIdAndRoomId(UUID id, UUID roomId);
 
+    long countByRoomId(UUID roomId);
+
+    // Windows and macOS treat Main.java and main.java as the same file, so the room does too
+    boolean existsByRoomIdAndFileNameIgnoreCase(UUID roomId, String fileName);
+
     // SELECT ... FOR UPDATE: edits to the same document wait for each other, because
     // STOMP messages are handled on a thread pool and two edits could otherwise
     // both read revision N and both write N+1.
