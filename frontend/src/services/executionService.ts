@@ -46,23 +46,3 @@ export async function runDocument(
 
   return response.json()
 }
-
-const STATUS_TEXT: Record<ExecutionStatus, string> = {
-  SUCCESS: "Finished",
-  COMPILE_ERROR: "Compilation error",
-  RUNTIME_ERROR: "Runtime error",
-  TIME_LIMIT_EXCEEDED: "Time limit exceeded (2 s)",
-  MEMORY_LIMIT_EXCEEDED: "Memory limit exceeded (256 MB)",
-  INTERNAL_ERROR: "Could not run the code",
-}
-
-export function formatResult(result: ExecutionResult): string {
-  const exit = result.exitCode !== null && result.status !== "SUCCESS" ? `, exit code ${result.exitCode}` : ""
-  const lines = [`${STATUS_TEXT[result.status]} in ${result.durationMs} ms${exit}`]
-
-  if (result.stdout) lines.push("", result.stdout.trimEnd())
-  if (result.stderr) lines.push("", "--- stderr ---", result.stderr.trimEnd())
-  if (result.outputTruncated) lines.push("", "(output truncated at 64 KB)")
-
-  return lines.join("\n")
-}

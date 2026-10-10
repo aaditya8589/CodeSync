@@ -1,68 +1,51 @@
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import { joinRoom } from "../services/roomService"
 
 interface JoinRoomProps {
-  onRoomJoined: () => void
+  onRoomJoined: (roomId: string) => void
 }
 
 function JoinRoom({ onRoomJoined }: JoinRoomProps) {
   const [roomId, setRoomId] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
-
     setError("")
-    setSuccess("")
     setLoading(true)
 
+    const id = roomId.trim()
     try {
-      await joinRoom(roomId)
-
-      setSuccess("Joined room successfully")
+      await joinRoom(id)
       setRoomId("")
-
-      onRoomJoined()
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to join room"
-      )
+      onRoomJoined(id)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not join the room")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div>
-      <h2>Join Room</h2>
-
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="room-id">Room ID</label>
-
-          <input
-            id="room-id"
-            type="text"
-            value={roomId}
-            onChange={(event) => setRoomId(event.target.value)}
-            placeholder="Enter room ID"
-            required
-          />
-        </div>
-
-        <button type="submit" disabled={loading}>
-          {loading ? "Joining..." : "Join Room"}
-        </button>
-      </form>
-
-      {error && <p>{error}</p>}
-
-      {success && <p>{success}</p>}
-    </div>
+    <form className="side-form" onSubmit={handleSubmit}>
+      <h2>Join a room</h2>
+      <div className="field">
+        <label htmlFor="room-id">Room ID someone shared with you</label>
+        <input
+          id="room-id"
+          className="input"
+          value={roomId}
+          onChange={(event) => setRoomId(event.target.value)}
+          placeholder="e.g. 038ceccb-2f6b-41f4-..."
+          required
+        />
+      </div>
+      <button type="submit" className="button" disabled={loading}>
+        {loading ? "Joining..." : "Join room"}
+      </button>
+      {error && <p className="message message--error" role="alert">{error}</p>}
+    </form>
   )
 }
 

@@ -1,6 +1,18 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import AuthLayout from "../components/AuthLayout"
 import { API_BASE_URL } from "../config"
+
+// Validation errors arrive as {"field": "message"}; other errors as plain text
+function readableError(body: string, status: number): string {
+  try {
+    const fields = JSON.parse(body)
+    if (fields && typeof fields === "object") return Object.values(fields).join(". ")
+  } catch {
+    // not JSON
+  }
+  return body || `Registration failed (${status})`
+}
 
 function Register() {
   const navigate = useNavigate()
@@ -36,10 +48,7 @@ function Register() {
       )
 
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(
-          errorText || `Registration failed: ${response.status}`
-        )
+        throw new Error(readableError(await response.text(), response.status))
       }
 
       navigate("/login")
@@ -55,72 +64,63 @@ function Register() {
   }
 
   return (
-    <div>
-      <h1>Create your CodeSync account</h1>
-      <p>Register to start collaborating.</p>
+    <AuthLayout>
+      <form className="auth__form" onSubmit={handleRegister}>
+        <h2>Create an account</h2>
 
-      <form onSubmit={handleRegister}>
-        <div>
+        <div className="field">
           <label htmlFor="username">Username</label>
-          <br />
           <input
             id="username"
+            className="input"
             type="text"
+            autoComplete="username"
             value={username}
-            onChange={(event) =>
-              setUsername(event.target.value)
-            }
+            onChange={(event) => setUsername(event.target.value)}
             required
             minLength={3}
             maxLength={50}
           />
         </div>
 
-        <div>
+        <div className="field">
           <label htmlFor="email">Email</label>
-          <br />
           <input
             id="email"
+            className="input"
             type="email"
+            autoComplete="email"
             value={email}
-            onChange={(event) =>
-              setEmail(event.target.value)
-            }
+            onChange={(event) => setEmail(event.target.value)}
             required
           />
         </div>
 
-        <div>
+        <div className="field">
           <label htmlFor="password">Password</label>
-          <br />
           <input
             id="password"
+            className="input"
             type="password"
+            autoComplete="new-password"
             value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
-            }
+            onChange={(event) => setPassword(event.target.value)}
             required
             minLength={8}
           />
         </div>
 
-        {error && (
-          <p>
-            {error}
-          </p>
-        )}
+        {error && <p className="message message--error" role="alert">{error}</p>}
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Creating account..." : "Register"}
+        <button type="submit" className="button button--primary" disabled={loading}>
+          {loading ? "Creating account..." : "Create account"}
         </button>
-      </form>
 
-      <p>
-        Already have an account?{" "}
-        <Link to="/login">Login</Link>
-      </p>
-    </div>
+        <p className="auth__switch">
+          Already have an account? <Link to="/login">Sign in</Link>
+        </p>
+      </form>
+    </AuthLayout>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import { createRoom, type Room } from "../services/roomService"
 
 interface CreateRoomProps {
@@ -9,62 +9,43 @@ function CreateRoom({ onRoomCreated }: CreateRoomProps) {
   const [name, setName] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
-
     setError("")
-    setSuccess("")
     setLoading(true)
 
     try {
-      const room = await createRoom(name)
-
-      onRoomCreated(room)
-
-      setSuccess(`Room "${room.name}" created successfully`)
+      onRoomCreated(await createRoom(name))
       setName("")
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to create room"
-      )
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not create the room")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div>
-      <h2>Create Room</h2>
-
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="room-name">Room name</label>
-
-          <input
-            id="room-name"
-            type="text"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. DSA Practice"
-            required
-            minLength={3}
-            maxLength={100}
-          />
-        </div>
-
-        <button type="submit" disabled={loading}>
-          {loading ? "Creating..." : "Create Room"}
-        </button>
-      </form>
-
-      {error && <p>{error}</p>}
-
-      {success && <p>{success}</p>}
-    </div>
+    <form className="side-form" onSubmit={handleSubmit}>
+      <h2>New room</h2>
+      <div className="field">
+        <label htmlFor="room-name">Name</label>
+        <input
+          id="room-name"
+          className="input"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="e.g. Graphs practice"
+          required
+          minLength={3}
+          maxLength={100}
+        />
+      </div>
+      <button type="submit" className="button button--primary" disabled={loading}>
+        {loading ? "Creating..." : "Create room"}
+      </button>
+      {error && <p className="message message--error" role="alert">{error}</p>}
+    </form>
   )
 }
 

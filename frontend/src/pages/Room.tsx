@@ -1,22 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useParams, Link } from "react-router-dom"
+import { Link, Navigate, useParams } from "react-router-dom"
 
 import {
   getRoom,
   type Room as RoomType,
 } from "../services/roomService"
 import { createDocument, getDocuments, type RoomDocument } from "../services/documentService"
-import { formatResult, runDocument } from "../services/executionService"
+import { runDocument } from "../services/executionService"
 
-import RoomHeader from "../components/RoomHeader"
+import TopBar from "../components/TopBar"
+import PresenceSeats from "../components/PresenceSeats"
 import FileExplorer from "../components/FileExplorer"
 import CodeEditor, { type CodeEditorHandle } from "../components/CodeEditor"
-import OutputPanel from "../components/OutputPanel"
+import OutputPanel, { type RunState } from "../components/OutputPanel"
 import HistoryPanel from "../components/HistoryPanel"
+import { currentUsername } from "../auth/session"
 
 import useCodeSync, { type RemoteCursor } from "../hooks/useCodeSync"
 import type { TextOperation } from "../ot/textOperation"
-import { colorFor } from "../presence/colors"
 import { isRunnable, runLabel } from "../editor/language"
 
 function Room() {
@@ -28,8 +29,8 @@ function Room() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [editorReady, setEditorReady] = useState(false)
-  const [output, setOutput] = useState("No output yet.")
-  const [running, setRunning] = useState(false)
+  const [run, setRun] = useState<RunState>({ kind: "idle" })
+  const [copied, setCopied] = useState(false)
   const [stdin, setStdin] = useState("")
   const [historyOpen, setHistoryOpen] = useState(false)
 
@@ -134,65 +135,58 @@ function Room() {
   const handleRun = async () => {
     if (!roomId || !activeDocumentId) return
 
-    setRunning(true)
-    setOutput("Compiling and running...")
+    setRun({ kind: "running" })
     try {
-      setOutput(formatResult(await runDocument(roomId, activeDocumentId, stdin)))
+      setRun({ kind: "done", result: await runDocument(roomId, activeDocumentId, stdin) })
     } catch (error) {
-      setOutput(error instanceof Error ? error.message : "Run failed")
-    } finally {
-      setRunning(false)
+      setRun({ kind: "failed", message: error instanceof Error ? error.message : "Run failed" })
     }
   }
 
-  if (loading) {
-    return <p>Loading room...</p>
+  const copyRoomId = async () => {
+    if (!roomId) return
+    try {
+      await navigator.clipboard.writeText(roomId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard blocked (e.g. plain http): show the ID so it can be copied by hand
+      window.prompt("Room ID", roomId)
+    }
   }
 
-  if (error) {
+  if (!localStorage.getItem("token")) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (loading) {
+    return <p className="centered-note">Opening the room...</p>
+  }
+
+  if (error || !room || !documents) {
     return (
-      <div>
-        <h1>Unable to open room</h1>
-        <p>{error}</p>
-        <Link to="/dashboard">Back to Dashboard</Link>
+      <div className="centered-note">
+        <h1>Can't open this room</h1>
+        <p>{error || "The room was not found."}</p>
+        <p><Link to="/dashboard" className="button">Back to your rooms</Link></p>
       </div>
     )
   }
 
-  if (!room || !documents) {
-    return <p>Room not found</p>
-  }
-
   const activeDocument = documents.find((doc) => doc.id === activeDocumentId)
   const runnable = activeDocument ? isRunnable(activeDocument.fileName) : false
+  const running = run.kind === "running"
 
   return (
-    <div>
-      <RoomHeader
-        roomName={room.name}
-        roomId={room.id}
-      />
+    <div className="room">
+      <TopBar title={room.name}>
+        <PresenceSeats members={members} me={currentUsername()} />
+        <button type="button" className="button" onClick={() => void copyRoomId()}>
+          {copied ? "Copied" : "Copy room ID"}
+        </button>
+      </TopBar>
 
-      <ul aria-label="People in this room" style={{ listStyle: "none", padding: 0, display: "flex", gap: 16 }}>
-        {members.map((member) => (
-          <li key={member.username}>
-            <span
-              style={{
-                display: "inline-block",
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                marginRight: 6,
-                backgroundColor: colorFor(member.username),
-              }}
-            />
-            {member.username}
-            {member.clientIds.length > 1 ? ` (${member.clientIds.length} tabs)` : ""}
-          </li>
-        ))}
-      </ul>
-
-      <div>
+      <div className="room__body">
         <FileExplorer
           files={documents.map((doc) => doc.fileName)}
           activeFile={activeDocument?.fileName ?? ""}
@@ -203,17 +197,35 @@ function Room() {
           onCreateFile={handleCreateFile}
         />
 
-        <main>
-          {activeDocument ? (
-            <>
-              <h3>
-                {activeDocument.fileName}
-                {ready ? "" : " (connecting...)"}{" "}
-                <button type="button" onClick={() => setHistoryOpen(true)} disabled={!ready}>
-                  History
-                </button>
-              </h3>
+        <main className="workspace">
+          <div className="editor-bar">
+            <span className="editor-bar__file">{activeDocument?.fileName ?? "No file"}</span>
+            <span className={`status-dot${ready ? " status-dot--live" : ""}`}>
+              {ready ? "Live" : "Connecting..."}
+            </span>
+            <div className="editor-bar__actions">
+              <button
+                type="button"
+                className="button button--quiet"
+                onClick={() => setHistoryOpen(true)}
+                disabled={!ready || !activeDocument}
+              >
+                History
+              </button>
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={handleRun}
+                disabled={running || !ready || !runnable}
+                title={runnable ? undefined : "Only .cpp, .py and .java files can be run"}
+              >
+                {running ? "Running..." : `Run ${activeDocument ? runLabel(activeDocument.fileName) : ""}`}
+              </button>
+            </div>
+          </div>
 
+          <div className="editor-host">
+            {activeDocument ? (
               <CodeEditor
                 ref={editorRef}
                 documents={documents}
@@ -223,51 +235,39 @@ function Room() {
                 onCursorChange={sendCursor}
                 onReady={handleEditorReady}
               />
-            </>
-          ) : (
-            <p>This room has no files yet.</p>
-          )}
+            ) : (
+              <p className="centered-note">This room has no files yet. Add one on the left.</p>
+            )}
+          </div>
 
-          {historyOpen && activeDocument && (
-            <HistoryPanel
-              roomId={room.id}
-              documentId={activeDocument.id}
-              fileName={activeDocument.fileName}
-              getCurrentContent={() => editorRef.current?.getContent(activeDocument.id) ?? activeDocument.content}
-              onClose={() => setHistoryOpen(false)}
-            />
-          )}
-
-          <section>
-            <h3>Input</h3>
-            <textarea
-              value={stdin}
-              onChange={(event) => setStdin(event.target.value)}
-              placeholder="Input for your program (stdin)"
-              rows={5}
-              cols={60}
-              spellCheck={false}
-            />
-          </section>
-
-          <OutputPanel output={output} />
+          <div className="console">
+            <section className="console__pane" aria-label="Input">
+              <div className="console__head">
+                <label htmlFor="stdin">Input</label>
+              </div>
+              <textarea
+                id="stdin"
+                className="textarea console__input"
+                value={stdin}
+                onChange={(event) => setStdin(event.target.value)}
+                placeholder="What your program reads from standard input"
+                spellCheck={false}
+              />
+            </section>
+            <OutputPanel state={run} />
+          </div>
         </main>
       </div>
 
-      <button
-        type="button"
-        onClick={handleRun}
-        disabled={running || !ready || !runnable}
-        title={runnable ? undefined : "Only .cpp, .py and .java files can be run"}
-      >
-        {running ? "Running..." : `Run ${activeDocument ? runLabel(activeDocument.fileName) : "Code"}`}
-      </button>
-
-      <br />
-
-      <Link to="/dashboard">
-        Back to Dashboard
-      </Link>
+      {historyOpen && activeDocument && (
+        <HistoryPanel
+          roomId={room.id}
+          documentId={activeDocument.id}
+          fileName={activeDocument.fileName}
+          getCurrentContent={() => editorRef.current?.getContent(activeDocument.id) ?? activeDocument.content}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
     </div>
   )
 }

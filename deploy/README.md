@@ -21,7 +21,8 @@ browser ── HTTPS ──> Caddy (web) ──> /api, /ws ──> backend ─�
    Always Free resources are not charged).
 2. **Compute → Instances → Create instance**
    - Image: **Canonical Ubuntu 24.04**
-   - Shape: **Ampere → VM.Standard.A1.Flex**, 2 OCPUs and 12 GB memory (free up to 4 / 24)
+   - Shape: **Ampere → VM.Standard.A1.Flex**, 2 OCPUs and 12 GB memory (the Always Free limit since June 2026;
+     more is billed)
    - Networking: keep "Assign a public IPv4 address" on
    - SSH keys: **Generate a key pair** and download the private key
    - If it says *Out of capacity*, try another availability domain or try again later.

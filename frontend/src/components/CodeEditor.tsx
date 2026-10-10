@@ -6,6 +6,7 @@ import { editsFromOperation, operationFromChanges } from "../ot/monacoAdapter"
 import type { TextOperation } from "../ot/textOperation"
 import { colorClassRules, colorFor, colorIndex } from "../presence/colors"
 import { languageFor } from "../editor/language"
+import { defineEditorTheme, EDITOR_FONT, EDITOR_THEME } from "../editor/theme"
 import type { RoomDocument } from "../services/documentService"
 import "./RemoteCursors.css"
 
@@ -312,13 +313,17 @@ function CodeEditor({
 
   return (
     <Editor
-      height="500px"
-      theme="vs-dark"
+      height="100%"
+      theme={EDITOR_THEME}
+      beforeMount={defineEditorTheme}
       onMount={handleMount}
       options={{
+        ...EDITOR_FONT,
         minimap: { enabled: false },
-        fontSize: 14,
         automaticLayout: true,
+        scrollBeyondLastLine: false,
+        padding: { top: 12 },
+        renderLineHighlight: "all",
         readOnly,
       }}
     />
