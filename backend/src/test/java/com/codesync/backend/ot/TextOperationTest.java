@@ -344,4 +344,60 @@ class TextOperationTest {
 
         return op;
     }
+
+    // ---------- between ----------
+
+    @Test
+    void betweenTurnsOneTextIntoTheOther() {
+        TextOperation op = TextOperation.between("int main() { return 0; }", "int main() { return 1; }");
+        assertEquals("int main() { return 1; }", op.apply("int main() { return 0; }"));
+        // Only the changed character is replaced
+        assertEquals(List.of(20, "1", -1, 3), op.toJson());
+    }
+
+    @Test
+    void betweenIdenticalTextsIsANoop() {
+        assertTrue(TextOperation.between("same", "same").isNoop());
+        assertTrue(TextOperation.between("", "").isNoop());
+    }
+
+    @Test
+    void betweenNeverSplitsASurrogatePair() {
+        // Both emoji share the same high surrogate, so a naive common prefix would end mid-character
+        String from = "a\uD83D\uDE00b";
+        String to = "a\uD83D\uDE01b";
+        TextOperation op = TextOperation.between(from, to);
+        assertEquals(to, op.apply(from));
+        assertEquals(List.of(1, "\uD83D\uDE01", -2, 1), op.toJson());
+
+        // Same low surrogate, different high surrogate: a naive common suffix would split it
+        String from2 = "x\uD83D\uDE00";
+        String to2 = "x\uD83E\uDE00";
+        TextOperation op2 = TextOperation.between(from2, to2);
+        assertEquals(to2, op2.apply(from2));
+        assertEquals(List.of(1, "\uD83E\uDE00", -2), op2.toJson());
+    }
+
+    @Test
+    void betweenRandomTexts() {
+        Random random = new Random(SEED);
+        String alphabet = "ab\n\uD83D\uDE00\uD83D\uDE01";
+        for (int run = 0; run < RANDOM_RUNS; run++) {
+            String from = randomWellFormed(random, alphabet, random.nextInt(12));
+            String to = randomWellFormed(random, alphabet, random.nextInt(12));
+            TextOperation op = TextOperation.between(from, to);
+            assertEquals(to, op.apply(from), from + " -> " + to);
+            for (Object part : op.toJson()) {
+                if (part instanceof String inserted) assertTrue(TextOperation.isWellFormedUtf16(inserted));
+            }
+        }
+    }
+
+    // Picks whole characters (an emoji is two chars), so the text never has half a pair
+    private static String randomWellFormed(Random random, String alphabet, int length) {
+        StringBuilder out = new StringBuilder();
+        int[] codePoints = alphabet.codePoints().toArray();
+        for (int i = 0; i < length; i++) out.appendCodePoint(codePoints[random.nextInt(codePoints.length)]);
+        return out.toString();
+    }
 }

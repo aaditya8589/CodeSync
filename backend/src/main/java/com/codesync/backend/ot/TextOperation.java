@@ -303,6 +303,32 @@ public final class TextOperation {
     }
 
     /**
+     * An operation that turns {@code from} into {@code to}: keep the common start and end,
+     * replace the middle. Not a minimal diff, but a single edit is all a restore needs, and it
+     * keeps the operation small when only part of the file changed. Never splits an emoji.
+     */
+    public static TextOperation between(String from, String to) {
+        int maxCommon = Math.min(from.length(), to.length());
+
+        int prefix = 0;
+        while (prefix < maxCommon && from.charAt(prefix) == to.charAt(prefix)) prefix++;
+        if (prefix > 0 && Character.isHighSurrogate(from.charAt(prefix - 1))) prefix--;
+
+        int suffix = 0;
+        while (suffix < maxCommon - prefix
+                && from.charAt(from.length() - 1 - suffix) == to.charAt(to.length() - 1 - suffix)) {
+            suffix++;
+        }
+        if (suffix > 0 && Character.isLowSurrogate(from.charAt(from.length() - suffix))) suffix--;
+
+        return new TextOperation()
+                .retain(prefix)
+                .delete(from.length() - prefix - suffix)
+                .insert(to.substring(prefix, to.length() - suffix))
+                .retain(suffix);
+    }
+
+    /**
      * True if the text has no half of a surrogate pair on its own. Such text cannot be stored as
      * UTF-8, and an operation positioned inside an emoji would produce it.
      */
