@@ -3,6 +3,7 @@ package com.codesync.backend.config;
 import com.codesync.backend.security.JwtAuthenticationFilter;
 import com.codesync.backend.security.JwtService;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -12,6 +13,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 
 import org.springframework.security.config.http.SessionCreationPolicy;
+
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,6 +37,16 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    // Logins go through AuthService and JWTs, never through Spring's username/password login.
+    // Without a UserDetailsService bean, Spring Boot creates a default user with a generated
+    // password and prints it at startup; this bean turns that off.
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return username -> {
+            throw new UsernameNotFoundException("Password login is not used; sign in through /api/auth/login");
+        };
+    }
+
     @Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter(
             JwtService jwtService
@@ -41,13 +55,13 @@ public class SecurityConfig {
     }
 
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    public CorsConfigurationSource corsConfigurationSource(
+            @Value("${codesync.cors.allowed-origins}") String[] allowedOrigins
+    ) {
 
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(
-                List.of("http://localhost:5173")
-        );
+        configuration.setAllowedOrigins(trimmed(allowedOrigins));
 
         configuration.setAllowedMethods(
                 List.of(
@@ -75,6 +89,11 @@ public class SecurityConfig {
         );
 
         return source;
+    }
+
+    // "a, b" in the environment variable should mean "a" and "b"
+    static List<String> trimmed(String[] values) {
+        return java.util.Arrays.stream(values).map(String::trim).filter(value -> !value.isEmpty()).toList();
     }
 
     @Bean

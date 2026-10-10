@@ -4,6 +4,7 @@ import com.codesync.backend.presence.PresenceRegistry;
 import com.codesync.backend.security.JwtService;
 import com.codesync.backend.service.RoomService;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -19,15 +20,18 @@ public class WebSocketConfig
     private final JwtService jwtService;
     private final RoomService roomService;
     private final PresenceRegistry presenceRegistry;
+    private final String[] allowedOrigins;
 
     public WebSocketConfig(
             JwtService jwtService,
             RoomService roomService,
-            PresenceRegistry presenceRegistry
+            PresenceRegistry presenceRegistry,
+            @Value("${codesync.cors.allowed-origins}") String[] allowedOrigins
     ) {
         this.jwtService = jwtService;
         this.roomService = roomService;
         this.presenceRegistry = presenceRegistry;
+        this.allowedOrigins = SecurityConfig.trimmed(allowedOrigins).toArray(String[]::new);
     }
 
     @Override
@@ -47,7 +51,7 @@ public class WebSocketConfig
             StompEndpointRegistry registry
     ) {
         registry.addEndpoint("/ws")
-                .setAllowedOrigins("http://localhost:5173");
+                .setAllowedOrigins(allowedOrigins);
     }
 
     @Override

@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Runs against the real database. Every test is rolled back afterwards, so nothing is left
  * behind in the development database.
  */
-@SpringBootTest
+@SpringBootTest(properties = "codesync.jwt.secret=test-only-secret-that-is-long-enough-for-hs256")
 @Transactional
 class DocumentHistoryIntegrationTest {
 
