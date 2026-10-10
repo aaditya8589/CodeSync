@@ -102,6 +102,27 @@ export class TextOperation {
     return parts.join("")
   }
 
+  // Where a position in the old text ends up in the new text. An insert exactly at the
+  // position pushes it right, so a remote cursor stays after text typed at its spot.
+  transformIndex(index: number): number {
+    let remaining = index
+    let result = index
+
+    for (const op of this.ops) {
+      if (isRetain(op)) {
+        remaining -= op
+      } else if (isInsert(op)) {
+        result += op.length
+      } else {
+        result -= Math.min(remaining, -op)
+        remaining += op
+      }
+      if (remaining < 0) break
+    }
+
+    return result
+  }
+
   toJSON(): OperationJson {
     return this.ops
   }

@@ -1,5 +1,6 @@
 package com.codesync.backend.config;
 
+import com.codesync.backend.presence.PresenceRegistry;
 import com.codesync.backend.security.JwtService;
 import com.codesync.backend.service.RoomService;
 
@@ -25,10 +26,10 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketAuthInterceptor.class);
 
-    // The only destination a client may subscribe to. Anything else, including
+    // The only room destinations a client may subscribe to. Anything else, including
     // wildcard patterns like /topic/rooms/**, is rejected.
     private static final Pattern ROOM_TOPIC =
-            Pattern.compile("^/topic/rooms/([0-9a-fA-F-]{36})/code$");
+            Pattern.compile("^/topic/rooms/([0-9a-fA-F-]{36})/(code|presence|cursors)$");
 
     // Each user's private channel for rejected operations. Spring resolves it to the
     // subscriber's own sessions, so no room check is needed.
@@ -40,10 +41,16 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
     private final JwtService jwtService;
     private final RoomService roomService;
+    private final PresenceRegistry presenceRegistry;
 
-    public WebSocketAuthInterceptor(JwtService jwtService, RoomService roomService) {
+    public WebSocketAuthInterceptor(
+            JwtService jwtService,
+            RoomService roomService,
+            PresenceRegistry presenceRegistry
+    ) {
         this.jwtService = jwtService;
         this.roomService = roomService;
+        this.presenceRegistry = presenceRegistry;
     }
 
     @Override
@@ -105,7 +112,12 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         String roomId = matcher.group(1);
 
         try {
-            roomService.checkRoomAccess(UUID.fromString(roomId), username);
+            UUID room = UUID.fromString(roomId);
+            roomService.checkRoomAccess(room, username);
+
+            // Remember the check so cursor messages from this connection need no database query.
+            presenceRegistry.authorize(accessor.getSessionId(), username, room);
+
             log.info("WebSocket subscription authorized: {} -> room {}", username, roomId);
 
         } catch (RuntimeException exception) {

@@ -9,7 +9,7 @@ if (!token || !roomId) {
   process.exit(1)
 }
 
-function attempt(name, waitMs, action) {
+function attempt(name, waitMs, action, allowedText = "ALLOWED") {
   return new Promise((resolve) => {
     let connected = false
     let settled = false
@@ -22,7 +22,7 @@ function attempt(name, waitMs, action) {
       onConnect: () => {
         connected = true
         action(client)
-        setTimeout(() => finish("ALLOWED"), waitMs)
+        setTimeout(() => finish(allowedText), waitMs)
       },
       onStompError: (frame) => finish(`REJECTED (${frame.headers.message})`),
       onWebSocketClose: () =>
@@ -70,3 +70,27 @@ await attempt("3. Send a fake edit straight to the broadcast topic", 1500, (clie
     }),
   })
 })
+
+await attempt("4. Subscribe to the room's presence list", 1500, (client) => {
+  client.subscribe(`/topic/rooms/${roomId}/presence`, (message) => {
+    console.log(`   LEAKED: ${message.body.slice(0, 120)}`)
+  })
+})
+
+await attempt("5. Subscribe to the room's cursors", 1500, (client) => {
+  client.subscribe(`/topic/rooms/${roomId}/cursors`, (message) => {
+    console.log(`   LEAKED: ${message.body.slice(0, 120)}`)
+  })
+})
+
+// Sending to /app is allowed, so this one is checked in the browser: the server must ignore it
+await attempt("6. Join the room's presence and send a cursor", 1500, (client) => {
+  client.publish({
+    destination: `/app/rooms/${roomId}/presence`,
+    body: JSON.stringify({ clientId: "intruder" }),
+  })
+  client.publish({
+    destination: `/app/rooms/${roomId}/cursor`,
+    body: JSON.stringify({ documentId: roomId, revision: 0, anchor: 0, head: 0 }),
+  })
+}, "SENT (check the room tab: the outsider must NOT appear in the people list)")

@@ -1,5 +1,6 @@
 package com.codesync.backend.config;
 
+import com.codesync.backend.presence.PresenceRegistry;
 import com.codesync.backend.security.JwtService;
 import com.codesync.backend.service.RoomService;
 
@@ -17,13 +18,16 @@ public class WebSocketConfig
 
     private final JwtService jwtService;
     private final RoomService roomService;
+    private final PresenceRegistry presenceRegistry;
 
     public WebSocketConfig(
             JwtService jwtService,
-            RoomService roomService
+            RoomService roomService,
+            PresenceRegistry presenceRegistry
     ) {
         this.jwtService = jwtService;
         this.roomService = roomService;
+        this.presenceRegistry = presenceRegistry;
     }
 
     @Override
@@ -53,7 +57,8 @@ public class WebSocketConfig
         registration.interceptors(
                 new WebSocketAuthInterceptor(
                         jwtService,
-                        roomService
+                        roomService,
+                        presenceRegistry
                 )
         );
     }
