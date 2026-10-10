@@ -1,45 +1,126 @@
 # CodeSync
 
-CodeSync is a real-time collaborative coding platform that allows
-multiple users to edit, execute, test, and version the same codebase
-simultaneously.
+[![CI](https://github.com/aaditya8589/CodeSync/actions/workflows/ci.yml/badge.svg)](https://github.com/aaditya8589/CodeSync/actions/workflows/ci.yml)
 
-## Planned Features
+A real-time collaborative code editor: several people edit the same files at the same time, and anyone in the room can compile and run the code in a sandbox.
 
-- User authentication
-- Collaborative coding rooms
-- Real-time code synchronization
-- Multi-user presence
-- Version history
-- Code execution
-- DSA collaborative arena
-- Git integration
-- Performance and concurrency testing
+<!-- Demo: record a short GIF of two browser tabs typing at once and clicking Run Code, save it as docs/demo.gif, then replace this comment with ![CodeSync demo](docs/demo.gif) -->
 
-## Tech Stack
+## What works
 
-### Frontend
-- React
-- TypeScript
-- Vite
-- Monaco Editor
-- Tailwind CSS
+- **Concurrent editing with Operational Transformation.** Two people typing in the same line converge to the same text; nobody's keystrokes are lost.
+- **Server-authoritative documents.** Every edit is validated, rebased and saved by the server; refreshing, joining late or restarting the server keeps the code.
+- **Sandboxed C++ execution with input.** Run Code compiles and runs the room's saved code in a throw-away Docker container with no network and hard limits, and reports judge-style results (compile error, runtime error, time limit, memory limit).
+- **Rooms and access control.** JWT authentication, room membership checked on every REST call, WebSocket subscription and edit.
 
-### Backend
-- Java
-- Spring Boot
-- Spring Security
-- WebSockets
-- JPA / Hibernate
+## Architecture
 
-### Database
-- PostgreSQL
+```mermaid
+flowchart LR
+    subgraph Browser
+        M[Monaco editor] --> OC[OT client<br/>one op in flight]
+    end
+    OC <-- STOMP over WebSocket --> WS[WebSocket controller]
+    M -- REST --> API[REST controllers]
+    subgraph Spring Boot backend
+        WS --> DS[DocumentService<br/>lock, rebase, apply]
+        API --> ES[ExecutionService<br/>max 2 concurrent runs]
+    end
+    DS --> PG[(PostgreSQL<br/>documents + operation log)]
+    ES --> PG
+    ES -- docker run --> C[Container gcc:14<br/>no network, 256 MB, 1 CPU, 2 s]
+```
 
-### Infrastructure
-- Redis
-- Docker
-- Git / GitHub
+### Edit flow
 
-## Development Philosophy
+1. The client turns each Monaco change into an operation such as `[4821, "x", 5203]` (keep 4821 characters, insert `x`, keep 5203) and sends it with the revision it was based on.
+2. The server locks the document row (`SELECT ... FOR UPDATE`), loads the operations the client had not seen yet, and **transforms** the incoming operation past them.
+3. It applies the result, saves the content and an operation-log entry in one transaction, and broadcasts the transformed operation.
+4. The sender treats the broadcast as an acknowledgement; everyone else transforms it against their own unacknowledged edits and applies it without moving their cursor.
 
-Understand → Design → Implement → Test → Measure → Document
+## Design decisions
+
+| Decision | Why |
+|---|---|
+| **OT instead of a CRDT (e.g. Yjs)** | Run Code needs an authoritative plain-text copy on the server; the server already ordered edits with revisions; offline and peer-to-peer editing are not goals. |
+| **One operation in flight per client** | Edits typed while waiting are composed into one buffered operation, so fast typing sends far fewer messages (about 14 messages for 80 keystrokes in testing). |
+| **Run the saved copy, not code sent by the browser** | Everyone in the room runs exactly the same code, and nobody can run code they cannot see. |
+| **Code and input passed to the container over stdin** | No host folders are mounted into the container, which keeps the sandbox small and avoids path problems. |
+| **Deny-by-default WebSocket rules** | Only the exact room topic and the user's private error queue may be subscribed to, and clients may only send to `/app/...`. An attack script showed that wildcard subscriptions and direct broker sends were possible before this. |
+| **Synchronous execution with a 2-slot limit** | Simple and measurable; a queue with separate workers is the next step only if real load needs it. |
+
+## Sandbox
+
+Every run gets a fresh container:
+
+```
+docker run --rm -i --network none --memory 256m --memory-swap 256m --cpus 1 --pids-limit 64
+  --read-only --tmpfs /tmp:rw,exec,size=64m --user 1000:1000 --cap-drop ALL
+  --security-opt no-new-privileges gcc:14 ...
+```
+
+The program is limited to 2 seconds (`timeout`), the whole run to 20 seconds (after which the container is killed by name), and output to 64 KB per stream. CI runs real attacks against it on every push: infinite loop, memory bomb, fork bomb, network access, output flood and writing outside `/tmp`.
+
+## Testing
+
+| Area | Tests |
+|---|---|
+| OT core (Java) | 25: hand-checked cases, 10,000 random convergence and compose cases, JSON round-trips, UTF-16 checks |
+| OT core and client (TypeScript) | 30: the same algorithm, 500 simulated three-client sessions with delays and reordering, Monaco change conversion |
+| Code runner | 15 with a fake `docker` (every outcome including hung containers and Docker being down) and 11 against real Docker |
+| Integration scripts | `frontend/scripts/ot-server-check.mjs` (two clients against the running server) and `frontend/scripts/ws-security-check.mjs` (a non-member trying to read and inject) |
+
+The Java and TypeScript OT implementations were cross-checked to produce identical results on 5,000 random cases. Mutation tests confirmed the suites fail when key parts of the algorithm are broken.
+
+## Run it locally
+
+Requirements: Java 21+, Node 22+, PostgreSQL, Docker Desktop.
+
+```powershell
+# once: create the database and pull the compiler image
+psql -U postgres -c "CREATE DATABASE codesync"
+docker pull gcc:14
+
+# backend (http://localhost:8080)
+cd backend
+$env:DB_PASSWORD = "<your postgres password>"
+.\mvnw.cmd spring-boot:run
+
+# frontend (http://localhost:5173)
+cd frontend
+npm install
+npm run dev
+```
+
+Tests:
+
+```powershell
+cd backend;  .\mvnw.cmd test                      # needs PostgreSQL for the Spring context test
+$env:CODESYNC_DOCKER_TESTS = "true"; .\mvnw.cmd test -Dtest=CodeRunnerDockerTest
+cd frontend; npm test
+```
+
+## Project structure
+
+```
+backend/src/main/java/com/codesync/backend
+  ot/          TextOperation: apply, compose, transform, rebase, JSON
+  service/     DocumentService (OT on the server), RoomService
+  execution/   CodeRunner (Docker sandbox), ExecutionService
+  config/      Security, WebSocket configuration and authorization
+frontend/src
+  ot/          textOperation, otClient state machine, Monaco adapter
+  hooks/       useCodeSync (STOMP connection, resync)
+  components/  CodeEditor (one Monaco model per file)
+```
+
+## Known limitations
+
+- Only C++ can be run so far.
+- Undo also undoes other people's edits (collaborative undo is not implemented).
+- Edits typed while disconnected are discarded on reconnect; the editor is read-only while disconnected.
+- The operation log is never compacted.
+
+## Roadmap
+
+Remote cursors and presence, version history built on the operation log, more languages, a problem set with test cases, deployment.

@@ -2,14 +2,14 @@
 import { getMyRooms, type Room } from "../services/roomService"
 import CreateRoom from "../components/CreateRoom"
 import JoinRoom from "../components/JoinRoom"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
-  const fetchRooms = async () => {
+  const fetchRooms = useCallback(async () => {
     try {
       const data = await getMyRooms()
       setRooms(data)
@@ -19,10 +19,17 @@ function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    fetchRooms()
+    // Load once on mount; state is only set after the request resolves
+    getMyRooms()
+      .then(setRooms)
+      .catch((error) => {
+        setError("Failed to load rooms")
+        console.error(error)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) {
