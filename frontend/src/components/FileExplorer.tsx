@@ -8,12 +8,12 @@ interface FileExplorerProps {
   onCreateFile: (fileName: string) => Promise<void>
 }
 
-function FileExplorer({
-  files,
-  activeFile,
-  onFileSelect,
-  onCreateFile,
-}: FileExplorerProps) {
+const extensionOf = (fileName: string) => {
+  const dot = fileName.lastIndexOf(".")
+  return dot < 0 ? "" : fileName.slice(dot + 1).toLowerCase()
+}
+
+function FileExplorer({ files, activeFile, onFileSelect, onCreateFile }: FileExplorerProps) {
   const [newName, setNewName] = useState("")
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState("")
@@ -28,44 +28,47 @@ function FileExplorer({
       await onCreateFile(newName.trim())
       setNewName("")
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not create the file")
+      setError(reason instanceof Error ? reason.message : "Could not add the file")
     } finally {
       setCreating(false)
     }
   }
 
   return (
-    <aside>
-      <h3>Files</h3>
+    <aside className="files" aria-label="Files">
+      <h2>Files</h2>
 
-      <ul>
+      <ul className="files__list">
         {files.map((file) => (
           <li key={file}>
             <button
               type="button"
+              className="files__item"
+              aria-current={file === activeFile}
               onClick={() => onFileSelect(file)}
-              disabled={file === activeFile}
             >
+              <span className="files__ext" aria-hidden="true">{extensionOf(file)}</span>
               {file}
             </button>
           </li>
         ))}
       </ul>
 
-      <form onSubmit={(event) => void handleCreate(event)}>
+      <form className="files__add" onSubmit={(event) => void handleCreate(event)}>
         <input
+          className="input"
           aria-label="New file name"
           value={newName}
           onChange={(event) => setNewName(event.target.value)}
-          placeholder="e.g. solve.py or Main.java"
+          placeholder="solve.py, Main.java..."
           maxLength={64}
           disabled={creating}
-        />{" "}
-        <button type="submit" disabled={creating || !newName.trim()}>
+        />
+        <button type="submit" className="button" disabled={creating || !newName.trim()}>
           {creating ? "Adding..." : "Add file"}
         </button>
+        {error && <p className="message message--error" role="alert">{error}</p>}
       </form>
-      {error && <p role="alert" style={{ color: "#b00020" }}>{error}</p>}
     </aside>
   )
 }

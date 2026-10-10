@@ -1,6 +1,7 @@
 import { DiffEditor } from "@monaco-editor/react"
 import { useEffect, useState } from "react"
 import { languageFor } from "../editor/language"
+import { defineEditorTheme, EDITOR_FONT, EDITOR_THEME } from "../editor/theme"
 import { historyEntries } from "../history/entries"
 import {
   getHistory,
@@ -64,33 +65,22 @@ function HistoryPanel({ roomId, documentId, fileName, getCurrentContent, onClose
 
   const entries = history ? historyEntries(history) : []
 
+  const selectedEntry = entries.find((entry) => entry.revision === selected)
+
   return (
-    <div
-      role="dialog"
-      aria-label={`History of ${fileName}`}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-      }}
-    >
-      <div style={{ background: "#fff", color: "#111", width: "min(1200px, 95vw)", padding: 16, borderRadius: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0 }}>History of {fileName}</h3>
-          <button type="button" onClick={onClose}>Close</button>
+    <div className="dialog-backdrop" onKeyDown={(event) => event.key === "Escape" && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label={`History of ${fileName}`} className="dialog">
+        <div className="dialog__head">
+          <h2>History of {fileName}</h2>
+          {error && <p className="message message--error" role="alert">{error}</p>}
+          <button type="button" className="button button--quiet" onClick={onClose} autoFocus>Close</button>
         </div>
 
-        {error && <p style={{ color: "#b00020" }}>{error}</p>}
-
-        <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, width: 260, maxHeight: 480, overflowY: "auto" }}>
-            {!history && !error && <li>Loading…</li>}
+        <div className="dialog__body">
+          <ul className="versions">
+            {!history && !error && <li className="compare__empty">Loading...</li>}
             {history && entries.length === 0 && (
-              <li>No history yet. It starts with the next edit to this file.</li>
+              <li className="compare__empty">No history yet. It starts with the next edit to this file.</li>
             )}
             {entries.map((entry) => (
               <li key={entry.revision}>
@@ -98,36 +88,27 @@ function HistoryPanel({ roomId, documentId, fileName, getCurrentContent, onClose
                   type="button"
                   onClick={() => void select(entry.revision)}
                   aria-pressed={selected === entry.revision}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: 8,
-                    marginBottom: 4,
-                    background: selected === entry.revision ? "#dbeafe" : "#f4f4f5",
-                    border: "1px solid #ddd",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                  }}
                 >
-                  <strong>{entry.title}</strong>
-                  <br />
-                  <small>{entry.detail}</small>
+                  <span className="versions__title">{entry.title}</span>
+                  <span className="versions__detail">{entry.detail}</span>
                 </button>
               </li>
             ))}
           </ul>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="compare">
             {selected === null ? (
-              <p>Pick a version to compare it with the current file.</p>
+              <p className="compare__empty">Pick a version to compare it with the file as it is now.</p>
             ) : (
               <>
-                <p style={{ margin: "0 0 8px" }}>
-                  Left: revision {selected}. Right: current file.
-                </p>
+                <div className="compare__labels">
+                  <span>{selectedEntry?.title ?? `Revision ${selected}`}</span>
+                  <span>Now</span>
+                </div>
                 <DiffEditor
-                  height="420px"
-                  theme="vs-dark"
+                  height="100%"
+                  theme={EDITOR_THEME}
+                  beforeMount={defineEditorTheme}
                   language={languageFor(fileName)}
                   original={original}
                   modified={current}
@@ -141,29 +122,31 @@ function HistoryPanel({ roomId, documentId, fileName, getCurrentContent, onClose
                   // The gutter menu (revert arrows) is pointless in a read-only view, and its lazily built
                   // actions threw "AbstractContextKeyService has been disposed" when the dialog closed
                   options={{
+                    ...EDITOR_FONT,
                     readOnly: true,
                     originalEditable: false,
                     renderSideBySide: true,
                     renderGutterMenu: false,
                     renderMarginRevertIcon: false,
                     minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
                   }}
                 />
-                <div style={{ marginTop: 8 }}>
-                  {confirming ? (
+                <div className="compare__foot">
+                  {original === current ? (
+                    <span className="console__note">This version is the same as the file now.</span>
+                  ) : confirming ? (
                     <>
-                      <span>Replace the current file for everyone in the room? </span>
-                      <button type="button" onClick={() => void restore()} disabled={busy}>
+                      <span>Replace the file for everyone in the room?</span>
+                      <button type="button" className="button button--primary" onClick={() => void restore()} disabled={busy}>
                         {busy ? "Restoring..." : "Yes, restore"}
-                      </button>{" "}
-                      <button type="button" onClick={() => setConfirming(false)} disabled={busy}>Cancel</button>
+                      </button>
+                      <button type="button" className="button button--quiet" onClick={() => setConfirming(false)} disabled={busy}>
+                        Cancel
+                      </button>
                     </>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirming(true)}
-                      disabled={original === current}
-                    >
+                    <button type="button" className="button" onClick={() => setConfirming(true)}>
                       Restore this version
                     </button>
                   )}

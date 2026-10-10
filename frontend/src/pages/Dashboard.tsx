@@ -1,74 +1,70 @@
-
-import { getMyRooms, type Room } from "../services/roomService"
+import { useEffect, useState } from "react"
+import { Link, Navigate, useNavigate } from "react-router-dom"
 import CreateRoom from "../components/CreateRoom"
 import JoinRoom from "../components/JoinRoom"
-import { useCallback, useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import TopBar from "../components/TopBar"
+import { getMyRooms, type Room } from "../services/roomService"
+
+const dateFormat: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }
+
 function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-
-  const fetchRooms = useCallback(async () => {
-    try {
-      const data = await getMyRooms()
-      setRooms(data)
-    } catch (error) {
-      setError("Failed to load rooms")
-      console.error(error)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const navigate = useNavigate()
 
   useEffect(() => {
     // Load once on mount; state is only set after the request resolves
     getMyRooms()
       .then(setRooms)
-      .catch((error) => {
-        setError("Failed to load rooms")
-        console.error(error)
-      })
+      .catch(() => setError("Couldn't load your rooms. Check that the backend is running, then reload."))
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) {
-    return <p>Loading rooms...</p>
-  }
-
-  if (error) {
-    return <p>{error}</p>
+  if (!localStorage.getItem("token")) {
+    return <Navigate to="/login" replace />
   }
 
   return (
-    <div>
-      <h1>CodeSync Dashboard</h1>
+    <>
+      <TopBar />
+      <div className="dashboard">
+        <main>
+          <h1>Your rooms</h1>
 
-      <CreateRoom
-  onRoomCreated={(room) => {
-    setRooms((currentRooms) => [...currentRooms, room])
-  }}
-/>
-<JoinRoom
-  onRoomJoined={fetchRooms}
-/>
+          {loading && <p className="empty">Loading rooms...</p>}
+          {error && <p className="message message--error" role="alert">{error}</p>}
 
-      <h2>My Rooms</h2>
+          {!loading && !error && rooms.length === 0 && (
+            <p className="empty">
+              No rooms yet. Create one, or join with a room ID someone shared with you.
+            </p>
+          )}
 
-      {rooms.length === 0 ? (
-        <p>You are not a member of any rooms.</p>
-      ) : (
-        <ul>
-          {rooms.map((room) => (
-  <li key={room.id}>
-    <Link to={`/rooms/${room.id}`}>
-      {room.name}
-    </Link>
-  </li>
-))}
-        </ul>
-      )}
-    </div>
+          {rooms.length > 0 && (
+            <ul className="room-list">
+              {[...rooms]
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                .map((room) => (
+                  <li key={room.id}>
+                    <Link to={`/rooms/${room.id}`}>
+                      <span className="room-list__name">{room.name}</span>
+                      <span className="room-list__date">
+                        Created {new Date(room.createdAt).toLocaleDateString([], dateFormat)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </main>
+
+        <aside className="side-forms">
+          <CreateRoom onRoomCreated={(room) => navigate(`/rooms/${room.id}`)} />
+          <JoinRoom onRoomJoined={(roomId) => navigate(`/rooms/${roomId}`)} />
+        </aside>
+      </div>
+    </>
   )
 }
 
