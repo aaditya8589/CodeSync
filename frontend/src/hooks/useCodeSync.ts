@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Client } from "@stomp/stompjs"
+import { WEBSOCKET_URL } from "../config"
 import { OtClient, type ServerOperation } from "../ot/otClient"
 import type { TextOperation } from "../ot/textOperation"
 import type { RoomDocument } from "../services/documentService"
@@ -242,7 +243,7 @@ function useCodeSync({
     }
 
     const client = new Client({
-      brokerURL: "ws://localhost:8080/ws",
+      brokerURL: WEBSOCKET_URL,
       connectHeaders: { Authorization: `Bearer ${token}` },
       reconnectDelay: 5000,
 

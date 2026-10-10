@@ -92,6 +92,7 @@ docker pull gcc:14
 # backend (http://localhost:8080)
 cd backend
 $env:DB_PASSWORD = "<your postgres password>"
+$env:JWT_SECRET = "<a random string of at least 32 characters>"
 .\mvnw.cmd spring-boot:run
 
 # frontend (http://localhost:5173)
@@ -106,6 +107,29 @@ Tests:
 cd backend;  .\mvnw.cmd test                      # needs PostgreSQL for the Spring context test
 $env:CODESYNC_DOCKER_TESTS = "true"; .\mvnw.cmd test -Dtest=CodeRunnerDockerTest
 cd frontend; npm test
+```
+
+### Configuration
+
+All secrets and environment-specific values come from environment variables, so nothing secret is in the repository.
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `DB_PASSWORD` | yes | | PostgreSQL password |
+| `JWT_SECRET` | yes | | Key that signs login tokens, at least 32 characters. The backend refuses to start without it. |
+| `DB_URL` | no | `jdbc:postgresql://localhost:5432/codesync` | Database location |
+| `DB_USERNAME` | no | `postgres` | Database user |
+| `CORS_ALLOWED_ORIGINS` | no | `http://localhost:5173` | Comma-separated frontend URLs allowed to call the API and open WebSockets |
+| `JWT_EXPIRATION_MINUTES` | no | `60` | How long a login lasts |
+| `SHOW_SQL` | no | `false` | Log every SQL query |
+| `VITE_API_URL` (frontend, at build time) | no | `http://localhost:8080` | Backend URL; the WebSocket URL is derived from it |
+
+Generate a secret in PowerShell with a cryptographic random generator:
+
+```powershell
+$bytes = New-Object byte[] 48
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+[Convert]::ToBase64String($bytes)
 ```
 
 ## Project structure
