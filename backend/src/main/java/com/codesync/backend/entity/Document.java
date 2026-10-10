@@ -39,6 +39,11 @@ public class Document {
     @Column(nullable = false)
     private long revision;
 
+    // The revision of the first snapshot. Null until the first edit after history was added;
+    // versions older than this cannot be rebuilt.
+    @Column(name = "history_start_revision")
+    private Long historyStartRevision;
+
     public Document() {
     }
 
@@ -77,5 +82,13 @@ public class Document {
 
     public long getRevision() {
         return revision;
+    }
+
+    public Long getHistoryStartRevision() {
+        return historyStartRevision;
+    }
+
+    public void setHistoryStartRevision(Long historyStartRevision) {
+        this.historyStartRevision = historyStartRevision;
     }
 }

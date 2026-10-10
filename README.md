@@ -10,6 +10,7 @@ A real-time collaborative code editor: several people edit the same files at the
 
 - **Concurrent editing with Operational Transformation.** Two people typing in the same line converge to the same text; nobody's keystrokes are lost.
 - **Live cursors and presence.** Everyone sees who is in the room and where each person's caret and selection are, with a coloured name label, kept exact while both sides type.
+- **Version history.** Browse earlier versions of a file (edits grouped by pauses, with who made them), compare any version with the current file side by side, and restore it for everyone in the room.
 - **Server-authoritative documents.** Every edit is validated, rebased and saved by the server; refreshing, joining late or restarting the server keeps the code.
 - **Sandboxed C++ execution with input.** Run Code compiles and runs the room's saved code in a throw-away Docker container with no network and hard limits, and reports judge-style results (compile error, runtime error, time limit, memory limit).
 - **Rooms and access control.** JWT authentication, room membership checked on every REST call, WebSocket subscription and edit.
@@ -50,6 +51,8 @@ flowchart LR
 | **Deny-by-default WebSocket rules** | Only the exact room topic and the user's private error queue may be subscribed to, and clients may only send to `/app/...`. An attack script showed that wildcard subscriptions and direct broker sends were possible before this. |
 | **Cursors as positions at a revision, transformed on arrival** | A cursor is only sent when the sender has no unacknowledged edits, so its offset means "this position in server revision R". The receiver moves it through the operations since R and its own unsent edits, so cursors stay exact under concurrent typing. |
 | **Presence kept in memory, cursors never touch the database** | Presence only matters while a connection is open. The subscription check records which rooms a connection may use, so frequent cursor messages are checked against memory; the sender's name and tab ID come from the server, so nobody can move someone else's cursor. |
+| **Snapshots plus the operation log for history** | The log stores how many characters an edit deleted, not which, so old versions cannot be rebuilt backwards from the current text. A full snapshot is saved at a file's first edit and every 100 revisions; any version is the nearest earlier snapshot plus at most 100 replayed operations. |
+| **Restore is an ordinary edit** | Restoring computes one operation from the current text to the old text and applies it like typing, so every open editor receives it live, concurrent edits are transformed as usual, and a restore can itself be undone from the history. |
 | **Synchronous execution with a 2-slot limit** | Simple and measurable; a queue with separate workers is the next step only if real load needs it. |
 
 ## Sandbox
@@ -68,8 +71,9 @@ The program is limited to 2 seconds (`timeout`), the whole run to 20 seconds (af
 
 | Area | Tests |
 |---|---|
-| OT core (Java) | 25: hand-checked cases, 10,000 random convergence and compose cases, JSON round-trips, UTF-16 checks |
+| OT core (Java) | 29: hand-checked cases, 10,000 random convergence and compose cases, JSON round-trips, UTF-16 checks |
 | OT core and client (TypeScript) | 40: the same algorithm, 500 simulated three-client sessions with delays and reordering, Monaco change conversion, and 300 sessions checking that every remote cursor lands on exactly the right character |
+| Version history (Java) | 11: grouping edits into versions, and against the real database: every one of 250 revisions rebuilt exactly across snapshots, restore and undoing a restore, history that starts after older edits, invalid revisions, non-members |
 | Presence (Java) | 15: the presence registry, and the controller rejecting cursors from connections that did not pass the room check |
 | Code runner | 15 with a fake `docker` (every outcome including hung containers and Docker being down) and 11 against real Docker |
 | Integration scripts | `frontend/scripts/ot-server-check.mjs` (two clients against the running server) and `frontend/scripts/ws-security-check.mjs` (a non-member trying to read, inject, and join presence) |
@@ -127,4 +131,4 @@ frontend/src
 
 ## Roadmap
 
-Version history built on the operation log, more languages, a problem set with test cases, deployment.
+More languages, a problem set with test cases, deployment.

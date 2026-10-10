@@ -5,12 +5,15 @@ import type { RemoteCursor } from "../hooks/useCodeSync"
 import { editsFromOperation, operationFromChanges } from "../ot/monacoAdapter"
 import type { TextOperation } from "../ot/textOperation"
 import { colorClassRules, colorFor, colorIndex } from "../presence/colors"
+import { languageFor } from "../editor/language"
 import type { RoomDocument } from "../services/documentService"
 import "./RemoteCursors.css"
 
 export interface CodeEditorHandle {
   applyRemote: (documentId: string, operation: TextOperation) => void
   reset: (documents: RoomDocument[]) => void
+  // The text this tab currently shows, including edits not yet confirmed by the server
+  getContent: (documentId: string) => string | null
   setRemoteCursor: (cursor: RemoteCursor) => void
   // Removes the cursors of tabs that are no longer in the room
   retainRemoteCursors: (clientIds: Set<string>) => void
@@ -78,20 +81,6 @@ function selectionOffsets(model: editor.ITextModel, selection: {
   ]
 }
 
-const LANGUAGES: Record<string, string> = {
-  cpp: "cpp",
-  cc: "cpp",
-  h: "cpp",
-  hpp: "cpp",
-  java: "java",
-  py: "python",
-  js: "javascript",
-  ts: "typescript",
-}
-
-function languageFor(fileName: string): string {
-  return LANGUAGES[fileName.split(".").pop() ?? ""] ?? "plaintext"
-}
 
 function CodeEditor({
   documents,
@@ -212,6 +201,10 @@ function CodeEditor({
       }
       remoteCursorsRef.current.set(clientId, created)
       editorInstance.addContentWidget(created.widget)
+    },
+
+    getContent(documentId) {
+      return modelsRef.current.get(documentId)?.getValue() ?? null
     },
 
     retainRemoteCursors(clientIds) {

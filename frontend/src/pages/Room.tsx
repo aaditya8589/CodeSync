@@ -12,6 +12,7 @@ import RoomHeader from "../components/RoomHeader"
 import FileExplorer from "../components/FileExplorer"
 import CodeEditor, { type CodeEditorHandle } from "../components/CodeEditor"
 import OutputPanel from "../components/OutputPanel"
+import HistoryPanel from "../components/HistoryPanel"
 
 import useCodeSync, { type RemoteCursor } from "../hooks/useCodeSync"
 import type { TextOperation } from "../ot/textOperation"
@@ -29,6 +30,7 @@ function Room() {
   const [output, setOutput] = useState("No output yet.")
   const [running, setRunning] = useState(false)
   const [stdin, setStdin] = useState("")
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const editorRef = useRef<CodeEditorHandle>(null)
   // Only the newest reload may apply its result
@@ -185,7 +187,10 @@ function Room() {
             <>
               <h3>
                 {activeDocument.fileName}
-                {ready ? "" : " (connecting...)"}
+                {ready ? "" : " (connecting...)"}{" "}
+                <button type="button" onClick={() => setHistoryOpen(true)} disabled={!ready}>
+                  History
+                </button>
               </h3>
 
               <CodeEditor
@@ -200,6 +205,16 @@ function Room() {
             </>
           ) : (
             <p>This room has no files yet.</p>
+          )}
+
+          {historyOpen && activeDocument && (
+            <HistoryPanel
+              roomId={room.id}
+              documentId={activeDocument.id}
+              fileName={activeDocument.fileName}
+              getCurrentContent={() => editorRef.current?.getContent(activeDocument.id) ?? activeDocument.content}
+              onClose={() => setHistoryOpen(false)}
+            />
           )}
 
           <section>

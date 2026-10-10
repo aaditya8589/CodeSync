@@ -95,4 +95,14 @@ public ResponseEntity<String> handleRoomNotFound(
     public ResponseEntity<String> handleInvalidRunRequest(InvalidRunRequestException exception) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(exception.getMessage());
     }
+
+    @ExceptionHandler(RevisionNotAvailableException.class)
+    public ResponseEntity<String> handleRevisionNotAvailable(RevisionNotAvailableException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(exception.getMessage());
+    }
+
+    @ExceptionHandler(InvalidRevisionException.class)
+    public ResponseEntity<String> handleInvalidRevision(InvalidRevisionException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(exception.getMessage());
+    }
 }
