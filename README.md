@@ -9,6 +9,7 @@ A real-time collaborative code editor: several people edit the same files at the
 ## What works
 
 - **Concurrent editing with Operational Transformation.** Two people typing in the same line converge to the same text; nobody's keystrokes are lost.
+- **Live cursors and presence.** Everyone sees who is in the room and where each person's caret and selection are, with a coloured name label, kept exact while both sides type.
 - **Server-authoritative documents.** Every edit is validated, rebased and saved by the server; refreshing, joining late or restarting the server keeps the code.
 - **Sandboxed C++ execution with input.** Run Code compiles and runs the room's saved code in a throw-away Docker container with no network and hard limits, and reports judge-style results (compile error, runtime error, time limit, memory limit).
 - **Rooms and access control.** JWT authentication, room membership checked on every REST call, WebSocket subscription and edit.
@@ -47,6 +48,8 @@ flowchart LR
 | **Run the saved copy, not code sent by the browser** | Everyone in the room runs exactly the same code, and nobody can run code they cannot see. |
 | **Code and input passed to the container over stdin** | No host folders are mounted into the container, which keeps the sandbox small and avoids path problems. |
 | **Deny-by-default WebSocket rules** | Only the exact room topic and the user's private error queue may be subscribed to, and clients may only send to `/app/...`. An attack script showed that wildcard subscriptions and direct broker sends were possible before this. |
+| **Cursors as positions at a revision, transformed on arrival** | A cursor is only sent when the sender has no unacknowledged edits, so its offset means "this position in server revision R". The receiver moves it through the operations since R and its own unsent edits, so cursors stay exact under concurrent typing. |
+| **Presence kept in memory, cursors never touch the database** | Presence only matters while a connection is open. The subscription check records which rooms a connection may use, so frequent cursor messages are checked against memory; the sender's name and tab ID come from the server, so nobody can move someone else's cursor. |
 | **Synchronous execution with a 2-slot limit** | Simple and measurable; a queue with separate workers is the next step only if real load needs it. |
 
 ## Sandbox
@@ -66,9 +69,10 @@ The program is limited to 2 seconds (`timeout`), the whole run to 20 seconds (af
 | Area | Tests |
 |---|---|
 | OT core (Java) | 25: hand-checked cases, 10,000 random convergence and compose cases, JSON round-trips, UTF-16 checks |
-| OT core and client (TypeScript) | 30: the same algorithm, 500 simulated three-client sessions with delays and reordering, Monaco change conversion |
+| OT core and client (TypeScript) | 40: the same algorithm, 500 simulated three-client sessions with delays and reordering, Monaco change conversion, and 300 sessions checking that every remote cursor lands on exactly the right character |
+| Presence (Java) | 15: the presence registry, and the controller rejecting cursors from connections that did not pass the room check |
 | Code runner | 15 with a fake `docker` (every outcome including hung containers and Docker being down) and 11 against real Docker |
-| Integration scripts | `frontend/scripts/ot-server-check.mjs` (two clients against the running server) and `frontend/scripts/ws-security-check.mjs` (a non-member trying to read and inject) |
+| Integration scripts | `frontend/scripts/ot-server-check.mjs` (two clients against the running server) and `frontend/scripts/ws-security-check.mjs` (a non-member trying to read, inject, and join presence) |
 
 The Java and TypeScript OT implementations were cross-checked to produce identical results on 5,000 random cases. Mutation tests confirmed the suites fail when key parts of the algorithm are broken.
 
@@ -123,4 +127,4 @@ frontend/src
 
 ## Roadmap
 
-Remote cursors and presence, version history built on the operation log, more languages, a problem set with test cases, deployment.
+Version history built on the operation log, more languages, a problem set with test cases, deployment.

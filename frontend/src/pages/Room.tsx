@@ -13,8 +13,9 @@ import FileExplorer from "../components/FileExplorer"
 import CodeEditor, { type CodeEditorHandle } from "../components/CodeEditor"
 import OutputPanel from "../components/OutputPanel"
 
-import useCodeSync from "../hooks/useCodeSync"
+import useCodeSync, { type RemoteCursor } from "../hooks/useCodeSync"
 import type { TextOperation } from "../ot/textOperation"
+import { colorFor } from "../presence/colors"
 
 function Room() {
   const { roomId } = useParams<{ roomId: string }>()
@@ -89,15 +90,25 @@ function Room() {
     void resync(reason)
   }, [resync])
 
+  const handleRemoteCursor = useCallback((cursor: RemoteCursor) => {
+    editorRef.current?.setRemoteCursor(cursor)
+  }, [])
+
   const handleEditorReady = useCallback(() => setEditorReady(true), [])
 
-  const { ready, applyLocalOperation } = useCodeSync({
+  const { ready, members, applyLocalOperation, sendCursor } = useCodeSync({
     roomId: roomId ?? "",
     documents,
     enabled: editorReady,
     onRemoteOperation: handleRemoteOperation,
     onResyncNeeded: handleResyncNeeded,
+    onRemoteCursor: handleRemoteCursor,
   })
+
+  // Drop the cursors of tabs that have left
+  useEffect(() => {
+    editorRef.current?.retainRemoteCursors(new Set(members.flatMap((member) => member.clientIds)))
+  }, [members])
 
   const handleRun = async () => {
     if (!roomId || !activeDocumentId) return
@@ -140,6 +151,25 @@ function Room() {
         roomId={room.id}
       />
 
+      <ul aria-label="People in this room" style={{ listStyle: "none", padding: 0, display: "flex", gap: 16 }}>
+        {members.map((member) => (
+          <li key={member.username}>
+            <span
+              style={{
+                display: "inline-block",
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                marginRight: 6,
+                backgroundColor: colorFor(member.username),
+              }}
+            />
+            {member.username}
+            {member.clientIds.length > 1 ? ` (${member.clientIds.length} tabs)` : ""}
+          </li>
+        ))}
+      </ul>
+
       <div>
         <FileExplorer
           files={documents.map((doc) => doc.fileName)}
@@ -164,6 +194,7 @@ function Room() {
                 activeDocumentId={activeDocumentId}
                 readOnly={!ready}
                 onLocalOperation={applyLocalOperation}
+                onCursorChange={sendCursor}
                 onReady={handleEditorReady}
               />
             </>

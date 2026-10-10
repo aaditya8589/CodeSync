@@ -1,0 +1,21 @@
+/* A remote user's selection, caret and name label. --remote-color is set by the
+   .remote-color-N classes generated from presence/colors.ts. */
+.remote-selection {
+  background-color: color-mix(in srgb, var(--remote-color) 30%, transparent);
+}
+
+.remote-caret {
+  position: absolute;
+  border-left: 2px solid var(--remote-color);
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.remote-cursor-label {
+  color: #1e1e1e;
+  font: 600 11px/16px sans-serif;
+  padding: 0 4px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
