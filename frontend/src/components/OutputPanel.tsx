@@ -1,10 +1,13 @@
 import type { ExecutionResult, ExecutionStatus } from "../services/executionService"
+import { VERDICT_TEXT, verdictTone, type JudgeResult } from "../services/arenaService"
 
 export type RunState =
   | { kind: "idle" }
   | { kind: "running" }
   | { kind: "failed"; message: string }
   | { kind: "done"; result: ExecutionResult }
+  | { kind: "judging" }
+  | { kind: "judged"; result: JudgeResult }
 
 const VERDICT: Record<ExecutionStatus, { text: string; tone: "ok" | "err" | "limit" }> = {
   SUCCESS: { text: "Finished", tone: "ok" },
@@ -23,6 +26,16 @@ function OutputPanel({ state }: { state: RunState }) {
       <div className="console__head" aria-live="polite">
         <span>Output</span>
         {state.kind === "running" && <span>Compiling and running...</span>}
+        {state.kind === "judging" && <span>Judging on all tests...</span>}
+        {state.kind === "judged" && (
+          <span className={`verdict verdict--${verdictTone(state.result.verdict)}`}>
+            {VERDICT_TEXT[state.result.verdict]}
+            {state.result.failedTest !== null ? ` on test ${state.result.failedTest}` : ""}{" "}
+            <span className="verdict__time">
+              {state.result.passed} of {state.result.total} tests passed
+            </span>
+          </span>
+        )}
         {verdict && state.kind === "done" && (
           <span className={`verdict verdict--${verdict.tone}`}>
             {verdict.text}{" "}
@@ -36,6 +49,9 @@ function OutputPanel({ state }: { state: RunState }) {
         )}
       </div>
 
+      {state.kind === "judged" ? (
+        <JudgeReport result={state.result} />
+      ) : (
       <pre className="console__output">
         {state.kind === "idle" && <span className="console__note">Run the file to see its output here.</span>}
         {state.kind === "failed" && <span className="console__stderr">{state.message}</span>}
@@ -57,7 +73,44 @@ function OutputPanel({ state }: { state: RunState }) {
           </>
         )}
       </pre>
+      )}
     </section>
+  )
+}
+
+function JudgeReport({ result }: { result: JudgeResult }) {
+  // The first failing example is worth showing in full; hidden tests only give their verdict
+  const failedSample = result.tests.find((test) => test.sample && test.verdict !== "ACCEPTED")
+
+  return (
+    <div className="console__output judge">
+      {result.compileOutput && <pre className="console__stderr">{result.compileOutput}</pre>}
+
+      {result.tests.length > 0 && (
+        <ol className="judge__tests">
+          {result.tests.map((test) => (
+            <li key={test.number} className={`judge__test judge__test--${verdictTone(test.verdict)}`}
+                title={`Test ${test.number}: ${VERDICT_TEXT[test.verdict]}, ${test.timeMs} ms`}>
+              <span className="judge__number">{test.number}</span>
+              <span className="judge__verdict">{test.verdict === "ACCEPTED" ? "Passed" : VERDICT_TEXT[test.verdict]}</span>
+              <span className="judge__time">{test.timeMs} ms{test.sample ? ", example" : ""}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {failedSample && (
+        <div className="judge__detail">
+          <p>Example test {failedSample.number}</p>
+          <div className="example__pair">
+            <div><span className="example__label">Input</span><pre>{failedSample.input}</pre></div>
+            <div><span className="example__label">Expected</span><pre>{failedSample.expectedOutput}</pre></div>
+            <div><span className="example__label">Your output</span><pre>{failedSample.actualOutput || " "}</pre></div>
+          </div>
+          {failedSample.errorOutput && <pre className="console__stderr">{failedSample.errorOutput}</pre>}
+        </div>
+      )}
+    </div>
   )
 }
 

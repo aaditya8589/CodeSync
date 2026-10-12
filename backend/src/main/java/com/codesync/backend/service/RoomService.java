@@ -194,7 +194,8 @@ public class RoomService {
                 room.getId(),
                 room.getName(),
                 room.getOwner().getId(),
-                room.getCreatedAt()
+                room.getCreatedAt(),
+                room.getProblem() == null ? null : room.getProblem().getSlug()
         );
     }
 }

@@ -3,6 +3,8 @@ import Login from "./pages/Login"
 import Register from "./pages/Register"
 import Dashboard from "./pages/Dashboard"
 import Room from "./pages/Room"
+import Problems from "./pages/Problems"
+import Problem from "./pages/Problem"
 
 function App() {
   return (
@@ -12,6 +14,8 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/rooms/:roomId" element={<Room />} />
+        <Route path="/problems" element={<Problems />} />
+        <Route path="/problems/:slug" element={<Problem />} />
         <Route path="/" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

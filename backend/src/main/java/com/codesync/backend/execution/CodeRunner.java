@@ -21,6 +21,12 @@ import java.util.concurrent.TimeUnit;
 public class CodeRunner {
 
     static final String COMPILE_ERROR_MARKER = "__CODESYNC_COMPILE_ERROR__";
+    static final String TEST_HEADER = "__CODESYNC_TEST__";
+
+    // Per test. Every expected output must be smaller (ProblemFileTest checks), so output that
+    // was cut off is always wrong rather than unjudgeable.
+    public static final int MAX_TEST_OUTPUT_BYTES = 256 * 1024;
+    static final int MAX_TEST_ERROR_BYTES = 4 * 1024;
 
     private static final int TIMEOUT_EXIT_CODE = 124;
     private static final int KILLED_EXIT_CODE = 137;
@@ -44,20 +50,68 @@ public class CodeRunner {
     }
 
     List<String> buildRunCommand(Language language, String source, String containerName) {
-        String file = "/tmp/" + language.sourceFile(source);
-
         // dd with iflag=fullblock copies exactly n bytes, so everything after the source is
-        // left for input.txt. Compile errors are flagged with a marker so they are not confused
-        // with the program's own stderr. timeout exits 124 when the time limit is hit.
-        String script = "read -r n"
-                + " && if [ \"$n\" -gt 0 ]; then dd of=" + file + " bs=\"$n\" count=1 iflag=fullblock status=none;"
-                + " else : > " + file + "; fi"
+        // left for input.txt. timeout exits 124 when the time limit is hit.
+        String script = readSourceScript(language, source)
                 + " && cat > /tmp/input.txt"
-                + " && if ! " + language.compileCommand(source) + " 2> /tmp/compile.txt; then"
-                + " echo " + COMPILE_ERROR_MARKER + " >&2; cat /tmp/compile.txt >&2; exit 1; fi"
+                + " && " + compileScript(language, source)
                 + " && exec timeout -k 1 " + language.timeLimitSeconds() + " "
                 + language.runCommand(source) + " < /tmp/input.txt";
+        return dockerRun(language, containerName, script);
+    }
 
+    /**
+     * Compiles once, then runs every test input in the same container, each with its own time
+     * limit. For each test it prints a header line followed by exactly the announced number of
+     * output bytes, so a program cannot fake a result by printing something that looks like a
+     * header. Stops after a time or memory limit, since later tests would most likely fail the
+     * same way and only make the judge slower.
+     */
+    List<String> buildTestCommand(Language language, String source, int testCount, String containerName) {
+        String script = readSourceScript(language, source)
+                + " && read -r k && i=0"
+                + " && while [ $i -lt $k ]; do read -r len"
+                + " && if [ $len -gt 0 ]; then dd of=/tmp/in$i bs=$len count=1 iflag=fullblock status=none;"
+                + " else : > /tmp/in$i; fi && i=$((i+1)); done"
+                + " && " + compileScript(language, source)
+                + " && i=0 && while [ $i -lt $k ]; do"
+                + " s=$(date +%s%N);"
+                + " timeout -k 1 " + language.timeLimitSeconds() + " " + language.runCommand(source)
+                + " < /tmp/in$i > /tmp/out 2> /tmp/err; c=$?;"
+                + " e=$(date +%s%N);"
+                + " head -c " + MAX_TEST_OUTPUT_BYTES + " /tmp/out > /tmp/o;"
+                + " head -c " + MAX_TEST_ERROR_BYTES + " /tmp/err > /tmp/e;"
+                + " printf '" + TEST_HEADER + " %s %s %s %s %s %s\\n' $i $c $(( (e - s) / 1000000 ))"
+                + " $(wc -c < /tmp/o) $(wc -c < /tmp/e) $(wc -c < /tmp/out);"
+                + " cat /tmp/o /tmp/e;"
+                + " if [ $c -eq " + TIMEOUT_EXIT_CODE + " ] || [ $c -eq " + KILLED_EXIT_CODE + " ]; then break; fi;"
+                + " i=$((i+1)); done";
+        return dockerRun(language, containerName, script);
+    }
+
+    private static String readSourceScript(Language language, String source) {
+        String file = "/tmp/" + language.sourceFile(source);
+        return "read -r n"
+                + " && if [ $n -gt 0 ]; then dd of=" + file + " bs=$n count=1 iflag=fullblock status=none;"
+                + " else : > " + file + "; fi";
+    }
+
+    // Compile errors are flagged with a marker so they are not confused with the program's stderr
+    private static String compileScript(Language language, String source) {
+        return "if ! " + language.compileCommand(source) + " 2> /tmp/compile.txt; then"
+                + " echo " + COMPILE_ERROR_MARKER + " >&2; cat /tmp/compile.txt >&2; exit 1; fi";
+    }
+
+    /**
+     * On Windows, Java joins the arguments into one command line and does not escape double
+     * quotes inside them, so a quoted part containing spaces is split into extra arguments and
+     * the script reaching sh is cut short. The scripts therefore never use double quotes; every
+     * value they expand is a number or a fixed path, so nothing needs them.
+     */
+    private List<String> dockerRun(Language language, String containerName, String script) {
+        if (script.indexOf('"') >= 0) {
+            throw new IllegalStateException("Container scripts must not contain double quotes");
+        }
         String image = images.get(language);
         if (image == null) {
             throw new IllegalStateException("No image configured for " + language.displayName());
@@ -89,22 +143,174 @@ public class CodeRunner {
 
     public ExecutionResult run(Language language, String source, String input) {
         String containerName = "codesync-run-" + UUID.randomUUID();
+        Launch launch = launch(
+                buildRunCommand(language, source, containerName),
+                containerName,
+                buildPayload(source, input),
+                wallClockLimit,
+                maxOutputBytes
+        );
+
+        if (launch.startError() != null) {
+            return new ExecutionResult(ExecutionStatus.INTERNAL_ERROR, "", launch.startError(), null, launch.durationMs(), false);
+        }
+
+        String out = new String(launch.stdout(), StandardCharsets.UTF_8);
+        String err = launch.stderr();
+
+        if (!launch.finished()) {
+            return new ExecutionResult(ExecutionStatus.TIME_LIMIT_EXCEEDED, out,
+                    err + "Stopped after " + wallClockLimit.toSeconds() + " seconds.", null, launch.durationMs(), launch.truncated());
+        }
+
+        int exitCode = launch.exitCode();
+
+        if (err.startsWith(COMPILE_ERROR_MARKER)) {
+            return new ExecutionResult(ExecutionStatus.COMPILE_ERROR, out, compilerOutput(err), exitCode, launch.durationMs(), launch.truncated());
+        }
+
+        if (exitCode == DOCKER_RUN_FAILED_EXIT_CODE || isDockerUnavailable(exitCode, err)) {
+            return new ExecutionResult(ExecutionStatus.INTERNAL_ERROR, "",
+                    "The code runner is not available: " + err.strip(), exitCode, launch.durationMs(), false);
+        }
+
+        return new ExecutionResult(statusFor(exitCode, err), out, err, exitCode, launch.durationMs(), launch.truncated());
+    }
+
+    /** One test's run inside a judged submission. */
+    public record TestOutcome(
+            ExecutionStatus status,
+            int exitCode,
+            long timeMs,
+            String stdout,
+            String stderr,
+            boolean outputTruncated
+    ) {
+    }
+
+    /**
+     * The result of running a program against several inputs. If failure is set (compile error,
+     * runner unavailable, or the whole run took too long), message explains it and outcomes holds
+     * whatever tests finished before that.
+     */
+    public record TestRun(
+            ExecutionStatus failure,
+            String message,
+            List<TestOutcome> outcomes,
+            long durationMs
+    ) {
+    }
+
+    public TestRun runTests(Language language, String source, List<String> inputs) {
+        String containerName = "codesync-judge-" + UUID.randomUUID();
+        // Every test may use its full time limit, plus compiling and starting the container
+        Duration limit = wallClockLimit.plusSeconds((long) inputs.size() * (language.timeLimitSeconds() + 1));
+        int maxBytes = inputs.size() * (MAX_TEST_OUTPUT_BYTES + MAX_TEST_ERROR_BYTES + 128) + maxOutputBytes;
+
+        Launch launch = launch(
+                buildTestCommand(language, source, inputs.size(), containerName),
+                containerName,
+                buildTestPayload(source, inputs),
+                limit,
+                maxBytes
+        );
+
+        if (launch.startError() != null) {
+            return new TestRun(ExecutionStatus.INTERNAL_ERROR, launch.startError(), List.of(), launch.durationMs());
+        }
+
+        String err = launch.stderr();
+        if (launch.finished() && err.startsWith(COMPILE_ERROR_MARKER)) {
+            return new TestRun(ExecutionStatus.COMPILE_ERROR, compilerOutput(err), List.of(), launch.durationMs());
+        }
+        if (launch.finished() && (launch.exitCode() == DOCKER_RUN_FAILED_EXIT_CODE || isDockerUnavailable(launch.exitCode(), err))) {
+            return new TestRun(ExecutionStatus.INTERNAL_ERROR, "The code runner is not available: " + err.strip(),
+                    List.of(), launch.durationMs());
+        }
+
+        List<TestOutcome> outcomes = parseTestOutput(launch.stdout());
+        if (!launch.finished()) {
+            return new TestRun(ExecutionStatus.TIME_LIMIT_EXCEEDED,
+                    "Stopped after " + limit.toSeconds() + " seconds.", outcomes, launch.durationMs());
+        }
+        return new TestRun(null, "", outcomes, launch.durationMs());
+    }
+
+    static List<TestOutcome> parseTestOutput(byte[] stdout) {
+        List<TestOutcome> outcomes = new ArrayList<>();
+        int position = 0;
+        while (position < stdout.length) {
+            int lineEnd = indexOf(stdout, (byte) '\n', position);
+            if (lineEnd < 0) break;
+
+            String[] header = new String(stdout, position, lineEnd - position, StandardCharsets.US_ASCII).split(" ");
+            if (header.length != 7 || !header[0].equals(TEST_HEADER)) break;
+
+            int exitCode = Integer.parseInt(header[2]);
+            long timeMs = Long.parseLong(header[3]);
+            int outBytes = Integer.parseInt(header[4]);
+            int errBytes = Integer.parseInt(header[5]);
+            long fullOutBytes = Long.parseLong(header[6]);
+
+            int outStart = lineEnd + 1;
+            int errStart = outStart + outBytes;
+            int next = errStart + errBytes;
+            if (next > stdout.length) break;  // cut off mid-test by the wall-clock limit
+
+            String out = new String(stdout, outStart, outBytes, StandardCharsets.UTF_8);
+            String err = new String(stdout, errStart, errBytes, StandardCharsets.UTF_8);
+            outcomes.add(new TestOutcome(statusFor(exitCode, err), exitCode, timeMs, out, err, fullOutBytes > outBytes));
+            position = next;
+        }
+        return outcomes;
+    }
+
+    private static int indexOf(byte[] bytes, byte value, int from) {
+        for (int i = from; i < bytes.length; i++) if (bytes[i] == value) return i;
+        return -1;
+    }
+
+    private static ExecutionStatus statusFor(int exitCode, String stderr) {
+        return switch (exitCode) {
+            case 0 -> ExecutionStatus.SUCCESS;
+            case TIMEOUT_EXIT_CODE -> ExecutionStatus.TIME_LIMIT_EXCEEDED;
+            case KILLED_EXIT_CODE -> ExecutionStatus.MEMORY_LIMIT_EXCEEDED;
+            default -> ranOutOfMemory(stderr) ? ExecutionStatus.MEMORY_LIMIT_EXCEEDED : ExecutionStatus.RUNTIME_ERROR;
+        };
+    }
+
+    private static String compilerOutput(String stderr) {
+        return stderr.substring(COMPILE_ERROR_MARKER.length()).stripLeading();
+    }
+
+    private record Launch(
+            String startError,
+            boolean finished,
+            int exitCode,
+            byte[] stdout,
+            String stderr,
+            boolean truncated,
+            long durationMs
+    ) {
+    }
+
+    private Launch launch(List<String> command, String containerName, byte[] payload, Duration limit, int maxBytes) {
         long start = System.nanoTime();
 
         Process process;
         try {
-            ProcessBuilder builder = new ProcessBuilder(buildRunCommand(language, source, containerName));
+            ProcessBuilder builder = new ProcessBuilder(command);
             // Stops Docker Desktop from appending its "What's next" adverts to stderr
             builder.environment().put("DOCKER_CLI_HINTS", "false");
             process = builder.start();
         } catch (IOException exception) {
-            return internalError("Could not start Docker: " + exception.getMessage(), start);
+            return new Launch("Could not start Docker: " + exception.getMessage(), false, -1,
+                    new byte[0], "", false, (System.nanoTime() - start) / 1_000_000);
         }
 
-        OutputCollector stdout = OutputCollector.start(process.getInputStream(), maxOutputBytes);
+        OutputCollector stdout = OutputCollector.start(process.getInputStream(), maxBytes);
         OutputCollector stderr = OutputCollector.start(process.getErrorStream(), maxOutputBytes);
 
-        byte[] payload = buildPayload(source, input);
         // On its own thread: if the container stops reading, a blocked write must not keep
         // us from reaching the wall-clock limit below
         Thread.ofVirtual().start(() -> {
@@ -117,7 +323,7 @@ public class CodeRunner {
 
         boolean finished;
         try {
-            finished = process.waitFor(wallClockLimit.toMillis(), TimeUnit.MILLISECONDS);
+            finished = process.waitFor(limit.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             finished = false;
@@ -129,36 +335,10 @@ public class CodeRunner {
             process.destroyForcibly();
         }
 
-        String out = stdout.finish();
-        String err = stderr.finish();
-        boolean truncated = stdout.truncated() || stderr.truncated();
-        long durationMs = (System.nanoTime() - start) / 1_000_000;
-
-        if (!finished) {
-            return new ExecutionResult(ExecutionStatus.TIME_LIMIT_EXCEEDED, out,
-                    err + "Stopped after " + wallClockLimit.toSeconds() + " seconds.", null, durationMs, truncated);
-        }
-
-        int exitCode = process.exitValue();
-
-        if (err.startsWith(COMPILE_ERROR_MARKER)) {
-            String compilerOutput = err.substring(COMPILE_ERROR_MARKER.length()).stripLeading();
-            return new ExecutionResult(ExecutionStatus.COMPILE_ERROR, out, compilerOutput, exitCode, durationMs, truncated);
-        }
-
-        if (exitCode == DOCKER_RUN_FAILED_EXIT_CODE || isDockerUnavailable(exitCode, err)) {
-            return new ExecutionResult(ExecutionStatus.INTERNAL_ERROR, "",
-                    "The code runner is not available: " + err.strip(), exitCode, durationMs, false);
-        }
-
-        ExecutionStatus status = switch (exitCode) {
-            case 0 -> ExecutionStatus.SUCCESS;
-            case TIMEOUT_EXIT_CODE -> ExecutionStatus.TIME_LIMIT_EXCEEDED;
-            case KILLED_EXIT_CODE -> ExecutionStatus.MEMORY_LIMIT_EXCEEDED;
-            default -> ranOutOfMemory(err) ? ExecutionStatus.MEMORY_LIMIT_EXCEEDED : ExecutionStatus.RUNTIME_ERROR;
-        };
-
-        return new ExecutionResult(status, out, err, exitCode, durationMs, truncated);
+        byte[] out = stdout.finishBytes();
+        String err = new String(stderr.finishBytes(), StandardCharsets.UTF_8);
+        return new Launch(null, finished, finished ? process.exitValue() : -1, out, err,
+                stdout.truncated() || stderr.truncated(), (System.nanoTime() - start) / 1_000_000);
     }
 
     static byte[] buildPayload(String source, String input) {
@@ -171,6 +351,21 @@ public class CodeRunner {
         System.arraycopy(sourceBytes, 0, payload, header.length, sourceBytes.length);
         System.arraycopy(inputBytes, 0, payload, header.length + sourceBytes.length, inputBytes.length);
         return payload;
+    }
+
+    // "<source bytes>\n" source "<test count>\n" then "<input bytes>\n" input for every test
+    static byte[] buildTestPayload(String source, List<String> inputs) {
+        java.io.ByteArrayOutputStream payload = new java.io.ByteArrayOutputStream();
+        byte[] sourceBytes = source.getBytes(StandardCharsets.UTF_8);
+        payload.writeBytes((sourceBytes.length + "\n").getBytes(StandardCharsets.US_ASCII));
+        payload.writeBytes(sourceBytes);
+        payload.writeBytes((inputs.size() + "\n").getBytes(StandardCharsets.US_ASCII));
+        for (String input : inputs) {
+            byte[] inputBytes = input.getBytes(StandardCharsets.UTF_8);
+            payload.writeBytes((inputBytes.length + "\n").getBytes(StandardCharsets.US_ASCII));
+            payload.writeBytes(inputBytes);
+        }
+        return payload.toByteArray();
     }
 
     // Java and Python report running out of memory themselves before the container is killed
@@ -197,11 +392,6 @@ public class CodeRunner {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    private ExecutionResult internalError(String message, long start) {
-        long durationMs = (System.nanoTime() - start) / 1_000_000;
-        return new ExecutionResult(ExecutionStatus.INTERNAL_ERROR, "", message, null, durationMs, false);
     }
 
     /**
@@ -242,14 +432,14 @@ public class CodeRunner {
             }
         }
 
-        String finish() {
+        byte[] finishBytes() {
             try {
                 thread.join(5_000);
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
             }
             synchronized (kept) {
-                return kept.toString(StandardCharsets.UTF_8);
+                return kept.toByteArray();
             }
         }
 

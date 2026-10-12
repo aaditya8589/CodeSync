@@ -331,6 +331,7 @@ a { color: inherit; }
   grid-template-rows: auto minmax(0, 1fr) 240px;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .editor-bar {
@@ -348,7 +349,9 @@ a { color: inherit; }
 .status-dot--live::before { background: var(--ok); }
 .editor-bar__actions { margin-left: auto; display: flex; gap: 8px; }
 
-.editor-host { min-height: 0; background: var(--editor); }
+/* Monaco sizes itself in pixels; without clipping, a wide editor spills over a panel that
+   opens next to it until its next layout pass */
+.editor-host { position: relative; min-height: 0; overflow: hidden; background: var(--editor); }
 
 .console {
   display: grid;
@@ -488,4 +491,184 @@ a { color: inherit; }
 @media (max-width: 760px) {
   .dialog__body { grid-template-columns: 1fr; }
   .versions { border-right: 0; border-bottom: 1px solid var(--line); max-height: 180px; }
+}
+
+/* ---------- Navigation ---------- */
+
+.topbar__nav { display: flex; gap: 4px; margin-left: 8px; }
+.topbar__nav a {
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+.topbar__nav a:hover { color: var(--text); }
+.topbar__nav a.active { color: var(--text); background: var(--raised); }
+
+/* ---------- Problems ---------- */
+
+.page { max-width: 820px; margin: 0 auto; padding: 40px 20px; }
+.page h1 { font-size: 26px; }
+.page__lead { color: var(--muted); max-width: 60ch; }
+
+.difficulty {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid currentColor;
+}
+.difficulty--easy { color: var(--ok); }
+.difficulty--medium { color: var(--warn); }
+.difficulty--hard { color: var(--err); }
+
+.problem-list { list-style: none; margin: 24px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.problem-list li { border-bottom: 1px solid var(--line); }
+.problem-list a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px;
+  text-decoration: none;
+}
+.problem-list a:hover .problem-list__title { color: var(--signal); }
+.problem-list__title { flex: 1; font-weight: 500; font-size: 16px; }
+.problem-list__check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+}
+.problem-list__check--done { border-color: var(--ok); background: var(--ok); box-shadow: inset 0 0 0 3px var(--ink); }
+
+.problem-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 48px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+.problem-page__title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.problem-page__title h1 { font-size: 28px; }
+.problem-page__title h2 { font-size: 20px; }
+.back-link { color: var(--muted); font-size: 14px; }
+.side-form__hint { margin: 0; color: var(--muted); font-size: 14px; }
+
+.statement { max-width: 68ch; }
+.statement p { margin: 0 0 12px; }
+.statement h3 { font-size: 15px; margin: 22px 0 8px; }
+.statement code {
+  font-family: var(--code);
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--raised);
+}
+.constraints { margin: 0; padding-left: 18px; }
+.constraints li { margin-bottom: 4px; }
+.statement__note { margin-top: 20px !important; color: var(--muted); font-size: 14px; }
+
+.example__pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.example__label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+.example__pair pre {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--ink);
+  font: 13px/1.5 var(--code);
+  overflow-x: auto;
+  max-height: 220px;
+}
+
+.submission-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.submission-list li { display: grid; gap: 2px; }
+.submission-list__meta { font-size: 13px; color: var(--muted); }
+
+select.input { appearance: auto; padding-right: 6px; }
+
+@media (max-width: 860px) {
+  .problem-page { grid-template-columns: 1fr; gap: 32px; }
+}
+
+/* ---------- Problem inside a room ---------- */
+
+.room__body--with-problem { grid-template-columns: 220px minmax(0, 1fr) minmax(320px, 400px); }
+
+.problem-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+.problem-panel__head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 46px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+.problem-panel__head .input { height: 32px; font-size: 13.5px; }
+.problem-panel__body { overflow-y: auto; padding: 16px 18px 28px; font-size: 14.5px; }
+.problem-panel__empty { color: var(--muted); }
+
+.room-news {
+  margin-left: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.room-news--ok { color: var(--ok); }
+.room-news--err { color: var(--err); }
+.room-news--limit { color: var(--warn); }
+.room-news--info { color: var(--muted); }
+
+.button[aria-pressed="true"] { color: var(--text); border-color: var(--line-strong); }
+
+/* ---------- Judge report ---------- */
+
+.judge { font-family: var(--ui); }
+.judge__tests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+.judge__test {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--tone);
+  border-radius: var(--radius-s);
+  font-size: 12.5px;
+}
+.judge__test--ok { --tone: var(--ok); }
+.judge__test--err { --tone: var(--err); }
+.judge__test--limit { --tone: var(--warn); }
+.judge__number { grid-row: span 2; font-weight: 600; color: var(--muted); }
+.judge__verdict { font-weight: 500; }
+.judge__time { color: var(--muted); }
+.judge__detail { margin-top: 14px; }
+.judge__detail p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 1100px) {
+  .room__body--with-problem { grid-template-columns: 200px minmax(0, 1fr) 320px; }
+}
+
+@media (max-width: 900px) {
+  .room__body--with-problem { grid-template-columns: 1fr; }
+  .problem-panel { border-left: 0; border-top: 1px solid var(--line); max-height: 70vh; }
+  .topbar__nav { margin-left: 0; }
 }

@@ -1,0 +1,61 @@
+title: Add Two Numbers
+difficulty: Easy
+position: 1
+=== statement
+Read two integers and print their sum.
+
+A warm-up to check how input and output work here: read from standard input, print to standard output, nothing else.
+=== input
+One line with two integers `a` and `b`.
+=== output
+Print `a + b`.
+=== constraints
+-10^18 <= a, b <= 10^18
+=== sample
+3 4
+--- expected
+7
+=== sample
+-10 25
+--- expected
+15
+=== test
+0 0
+--- expected
+0
+=== test
+-7 3
+--- expected
+-4
+=== test
+1000000000000000000 1000000000000000000
+--- expected
+2000000000000000000
+=== test
+-1000000000000000000 -1000000000000000000
+--- expected
+-2000000000000000000
+=== test
+123456789 -987654321
+--- expected
+-864197532
+=== test
+-981781494308212586 -883696057511572816
+--- expected
+-1865477551819785402
+=== test
+295628549185277176 753613813067637342
+--- expected
+1049242362252914518
+=== test
+542142670295939063 -91891836467610594
+--- expected
+450250833828328469
+=== test
+-606173239865535703 282742119091181193
+--- expected
+-323431120774354510
+=== test
+-462751197193255427 400370689862411637
+--- expected
+-62380507330843790

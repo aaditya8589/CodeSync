@@ -1,0 +1,176 @@
+package com.codesync.backend.arena;
+
+import com.codesync.backend.dto.arena.ProblemDetail;
+import com.codesync.backend.dto.arena.ProblemSummary;
+import com.codesync.backend.dto.arena.SubmissionSummary;
+import com.codesync.backend.entity.Document;
+import com.codesync.backend.entity.Problem;
+import com.codesync.backend.entity.Room;
+import com.codesync.backend.entity.Submission;
+import com.codesync.backend.exception.DocumentNotFoundException;
+import com.codesync.backend.exception.InvalidRunRequestException;
+import com.codesync.backend.exception.ProblemNotFoundException;
+import com.codesync.backend.exception.RoomNotFoundException;
+import com.codesync.backend.exception.UnsupportedLanguageException;
+import com.codesync.backend.execution.CodeRunner;
+import com.codesync.backend.execution.ExecutionService;
+import com.codesync.backend.execution.Language;
+import com.codesync.backend.repository.DocumentRepository;
+import com.codesync.backend.repository.ProblemRepository;
+import com.codesync.backend.repository.RoomRepository;
+import com.codesync.backend.repository.SubmissionRepository;
+import com.codesync.backend.service.RoomService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
+@Service
+public class ArenaService {
+
+    private static final Logger log = LoggerFactory.getLogger(ArenaService.class);
+
+    /** What a submission needs from the database, read before the (slow) judging starts. */
+    private record Attempt(UUID problemId, String problemTitle, List<ProblemFile.Test> tests,
+                           String fileName, String source) {
+    }
+
+    public record Judged(String problemTitle, String fileName, Judge.Result result) {
+    }
+
+    private final ProblemRepository problemRepository;
+    private final SubmissionRepository submissionRepository;
+    private final RoomRepository roomRepository;
+    private final DocumentRepository documentRepository;
+    private final RoomService roomService;
+    private final ExecutionService executionService;
+    private final TransactionTemplate transactions;
+
+    public ArenaService(
+            ProblemRepository problemRepository,
+            SubmissionRepository submissionRepository,
+            RoomRepository roomRepository,
+            DocumentRepository documentRepository,
+            RoomService roomService,
+            ExecutionService executionService,
+            TransactionTemplate transactions
+    ) {
+        this.problemRepository = problemRepository;
+        this.submissionRepository = submissionRepository;
+        this.roomRepository = roomRepository;
+        this.documentRepository = documentRepository;
+        this.roomService = roomService;
+        this.executionService = executionService;
+        this.transactions = transactions;
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProblemSummary> listProblems(String username) {
+        Set<String> solved = new HashSet<>(submissionRepository.findSolvedSlugs(username));
+        return problemRepository.findAllByOrderByPositionAsc().stream()
+                .map(problem -> new ProblemSummary(problem.getSlug(), problem.getTitle(),
+                        problem.getDifficulty(), solved.contains(problem.getSlug())))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ProblemDetail getProblem(String slug, String username) {
+        Problem problem = findProblem(slug);
+        List<ProblemDetail.Example> examples = problem.getTestCases().stream()
+                .filter(test -> test.isSample())
+                .map(test -> new ProblemDetail.Example(test.getInput(), test.getExpectedOutput()))
+                .toList();
+        boolean solved = submissionRepository.existsByProblemIdAndUsernameAndVerdict(
+                problem.getId(), username, Verdict.ACCEPTED.name());
+
+        return new ProblemDetail(problem.getSlug(), problem.getTitle(), problem.getDifficulty(),
+                problem.getStatement(), problem.getInputFormat(), problem.getOutputFormat(),
+                problem.getConstraints(), examples, problem.getTestCases().size(), solved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubmissionSummary> mySubmissions(String slug, String username) {
+        Problem problem = findProblem(slug);
+        return submissionRepository.findTop20ByProblemIdAndUsernameOrderByCreatedAtDesc(problem.getId(), username)
+                .stream()
+                .map(submission -> new SubmissionSummary(
+                        submission.getId().toString(),
+                        submission.getVerdict(),
+                        submission.getPassed(),
+                        submission.getTotal(),
+                        submission.getTimeMs(),
+                        submission.getLanguage(),
+                        submission.getFileName(),
+                        submission.getRoomId() == null ? null : submission.getRoomId().toString(),
+                        submission.getCreatedAt()))
+                .toList();
+    }
+
+    /** Sets (or with a null slug, removes) the problem the room works on. Returns the new slug. */
+    @Transactional
+    public String attachProblem(UUID roomId, String slug, String username) {
+        roomService.checkRoomAccess(roomId, username);
+        Room room = roomRepository.findById(roomId).orElseThrow(() -> new RoomNotFoundException("Room not found"));
+        room.setProblem(slug == null || slug.isBlank() ? null : findProblem(slug));
+        return room.getProblem() == null ? null : room.getProblem().getSlug();
+    }
+
+    /**
+     * Judges the saved copy of a file against the room's problem, like Run does, so everyone
+     * in the room submits exactly what they all see. Not one transaction: judging takes seconds
+     * and must not hold a database connection meanwhile.
+     */
+    public Judged submit(UUID roomId, UUID documentId, String username) {
+        roomService.checkRoomAccess(roomId, username);
+
+        Attempt attempt = transactions.execute(status -> {
+            Room room = roomRepository.findById(roomId).orElseThrow(() -> new RoomNotFoundException("Room not found"));
+            Problem problem = room.getProblem();
+            if (problem == null) {
+                throw new InvalidRunRequestException("Pick a problem for this room before submitting");
+            }
+            Document document = documentRepository.findByIdAndRoomId(documentId, roomId)
+                    .orElseThrow(() -> new DocumentNotFoundException("Document not found in this room"));
+            List<ProblemFile.Test> tests = problem.getTestCases().stream()
+                    .map(test -> new ProblemFile.Test(test.isSample(), test.getInput(), test.getExpectedOutput()))
+                    .toList();
+            return new Attempt(problem.getId(), problem.getTitle(), tests, document.getFileName(), document.getContent());
+        });
+
+        Language language = Language.fromFileName(attempt.fileName())
+                .orElseThrow(() -> new UnsupportedLanguageException(
+                        "Only C++ (.cpp), Python (.py) and Java (.java) files can be submitted"));
+
+        CodeRunner.TestRun run = executionService.runTests(
+                language, attempt.source(), attempt.tests().stream().map(ProblemFile.Test::input).toList());
+        Judge.Result result = Judge.judge(attempt.tests(), run);
+
+        transactions.executeWithoutResult(status -> submissionRepository.save(new Submission(
+                problemRepository.getReferenceById(attempt.problemId()),
+                username,
+                roomId,
+                attempt.fileName(),
+                language.name(),
+                attempt.source(),
+                result.verdict().name(),
+                result.passed(),
+                result.total(),
+                result.maxTimeMs()
+        )));
+
+        log.info("Submission by {} for {}: {} ({}/{})", username, attempt.problemTitle(),
+                result.verdict(), result.passed(), result.total());
+        return new Judged(attempt.problemTitle(), attempt.fileName(), result);
+    }
+
+    private Problem findProblem(String slug) {
+        return problemRepository.findBySlug(slug)
+                .orElseThrow(() -> new ProblemNotFoundException("No problem called " + slug));
+    }
+}

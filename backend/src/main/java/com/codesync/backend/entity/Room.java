@@ -23,6 +23,11 @@ public class Room {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    // The problem the room is working on, if any; everyone in the room sees it next to the code
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "problem_id")
+    private Problem problem;
+
     public Room() {
     }
 
@@ -54,5 +59,13 @@ public class Room {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Problem getProblem() {
+        return problem;
+    }
+
+    public void setProblem(Problem problem) {
+        this.problem = problem;
     }
 }

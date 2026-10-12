@@ -115,4 +115,9 @@ public ResponseEntity<String> handleRoomNotFound(
     public ResponseEntity<String> handleDuplicateFile(DuplicateFileException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(exception.getMessage());
     }
+
+    @ExceptionHandler(ProblemNotFoundException.class)
+    public ResponseEntity<String> handleProblemNotFound(ProblemNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(exception.getMessage());
+    }
 }
