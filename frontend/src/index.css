@@ -77,6 +77,9 @@ a { color: inherit; }
 .button--quiet { background: transparent; border-color: transparent; color: var(--muted); }
 .button--quiet:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); }
 
+.button--danger { background: transparent; border-color: var(--err); color: var(--err); }
+.button--danger:hover:not(:disabled) { background: #f2757a1f; border-color: var(--err); }
+
 .field { display: grid; gap: 6px; }
 .field label { font-size: 13px; color: var(--muted); }
 
@@ -314,8 +317,47 @@ a { color: inherit; }
   text-align: left;
   cursor: pointer;
 }
-.files__item:hover { background: var(--raised); color: var(--text); }
-.files__item[aria-current="true"] { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--signal); }
+.files__item:hover { color: var(--text); }
+.files__item[aria-current="true"] { color: var(--text); }
+.files__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The row carries the highlight so the rename/delete buttons sit inside it */
+.files__row { position: relative; display: flex; align-items: center; border-radius: var(--radius-s); }
+.files__row:hover { background: var(--raised); }
+.files__row:has(.files__item[aria-current="true"]) { background: var(--raised); box-shadow: inset 2px 0 0 var(--signal); }
+.files__row .files__item { flex: 1; min-width: 0; }
+.files__row .files__item:hover { background: transparent; }
+
+/* Shown on hover and keyboard focus; always shown on touch screens, which have no hover */
+.files__actions { display: flex; gap: 2px; padding-right: 4px; opacity: 0; }
+.files__row:hover .files__actions,
+.files__row:focus-within .files__actions { opacity: 1; }
+@media (hover: none) { .files__actions { opacity: 1; } }
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-button:hover:not(:disabled) { background: var(--line); color: var(--text); }
+.icon-button--danger:hover:not(:disabled) { color: var(--err); }
+.icon-button:disabled { opacity: 0.35; cursor: not-allowed; }
+.icon-button:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+
+.files__row--editing { gap: 8px; padding-left: 8px; background: var(--raised); }
+.files__rename.input { flex: 1; min-width: 0; margin-right: 4px; height: 30px; padding: 0 8px; font: 400 13.5px/1 var(--ui); }
+
+.files__confirm { display: grid; gap: 8px; padding: 8px; background: var(--raised); box-shadow: inset 2px 0 0 var(--err); }
+.files__confirm p { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.files__confirm strong { color: var(--text); font-weight: 500; }
+.files__confirm-actions { display: flex; gap: 6px; }
+.files__confirm-actions .button { height: 28px; padding: 0 10px; font-size: 13px; }
 .files__ext {
   flex: none;
   width: 30px;

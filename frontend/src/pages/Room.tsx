@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, useParams } from "react-router-dom"
 
 import {
   getRoom,
   type Room as RoomType,
 } from "../services/roomService"
-import { createDocument, getDocuments, type RoomDocument } from "../services/documentService"
+import {
+  createDocument,
+  deleteDocument,
+  getDocuments,
+  renameDocument,
+  type RoomDocument,
+} from "../services/documentService"
+import { afterSnapshot, withCurrentNames, withRename, type NameOverrides } from "../files/fileNames"
 import { runDocument } from "../services/executionService"
 
 import TopBar from "../components/TopBar"
@@ -26,7 +33,12 @@ import {
   type Verdict,
 } from "../services/arenaService"
 
-import useCodeSync, { type RemoteCursor, type RoomProblemMessage, type RoomSubmissionMessage } from "../hooks/useCodeSync"
+import useCodeSync, {
+  type FileChangeMessage,
+  type RemoteCursor,
+  type RoomProblemMessage,
+  type RoomSubmissionMessage,
+} from "../hooks/useCodeSync"
 import type { TextOperation } from "../ot/textOperation"
 import { isRunnable, runLabel } from "../editor/language"
 
@@ -48,10 +60,20 @@ function Room() {
   const [roomNews, setRoomNews] = useState<{ text: string; tone: "ok" | "err" | "limit" | "info" } | null>(null)
   const [stdin, setStdin] = useState("")
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [nameOverrides, setNameOverrides] = useState<NameOverrides>(() => new Map())
 
   const editorRef = useRef<CodeEditorHandle>(null)
   // Only the newest reload may apply its result
   const resyncRequestRef = useRef(0)
+  // How many renames have been shown; see files/fileNames.ts
+  const renameSeqRef = useRef(0)
+  // A file this tab just created, to open as soon as a load includes it
+  const openWhenLoadedRef = useRef<string | null>(null)
+  // Read by loadDocuments, which must not be recreated (and restart the sync) on every switch
+  const activeIdRef = useRef(activeDocumentId)
+  useEffect(() => {
+    activeIdRef.current = activeDocumentId
+  })
 
   useEffect(() => {
     const fetchRoomAndDocuments = async () => {
@@ -86,22 +108,37 @@ function Room() {
     fetchRoomAndDocuments()
   }, [roomId])
 
-  const resync = useCallback(async (reason: string) => {
+  // Loads the documents; if a newer load starts meanwhile, only that one is applied
+  const loadDocuments = useCallback(async () => {
     if (!roomId) return
 
     const request = ++resyncRequestRef.current
+    const renamesBefore = renameSeqRef.current
+    const fresh = await getDocuments(roomId)
+    if (request !== resyncRequestRef.current) return
+
+    editorRef.current?.reset(fresh)
+    setDocuments(fresh)
+    setNameOverrides((overrides) => afterSnapshot(overrides, renamesBefore))
+    const wanted = openWhenLoadedRef.current
+    if (wanted && fresh.some((doc) => doc.id === wanted)) {
+      openWhenLoadedRef.current = null
+      setActiveDocumentId(wanted)
+    } else if (!fresh.some((doc) => doc.id === activeIdRef.current)) {
+      // The open file was deleted: show another one
+      setActiveDocumentId(fresh[0]?.id ?? "")
+      setHistoryOpen(false)
+    }
+  }, [roomId])
+
+  const resync = useCallback(async (reason: string) => {
     console.info(`CodeSync: loading latest documents (${reason})`)
-
     try {
-      const fresh = await getDocuments(roomId)
-      if (request !== resyncRequestRef.current) return
-
-      editorRef.current?.reset(fresh)
-      setDocuments(fresh)
+      await loadDocuments()
     } catch (error) {
       setError(error instanceof Error ? error.message : "Failed to reload documents")
     }
-  }, [roomId])
+  }, [loadDocuments])
 
   const handleRemoteOperation = useCallback((documentId: string, operation: TextOperation) => {
     editorRef.current?.applyRemote(documentId, operation)
@@ -115,18 +152,29 @@ function Room() {
     if (!roomId) return
     const created = await createDocument(roomId, fileName)
 
-    // Load the list here instead of through resync(): a reload triggered by the server's
-    // "file added" message could otherwise win, and the switch below would happen before
-    // the editor has a model for the new file. Counting this as the newest reload discards
-    // any older one still in flight.
-    const request = ++resyncRequestRef.current
-    const fresh = await getDocuments(roomId)
-    // If a newer reload started meanwhile, it shows the new file; stay on the current one
-    // rather than switch to a file this render does not have yet
-    if (request !== resyncRequestRef.current) return
-    editorRef.current?.reset(fresh)
-    setDocuments(fresh)
-    setActiveDocumentId(created.id)
+    // Switching needs the editor to have a model for the new file, so it happens in whichever
+    // load first includes it: this one, or the newer one started by the server's "file added"
+    // message, which then replaces this one
+    openWhenLoadedRef.current = created.id
+    await loadDocuments()
+  }
+
+  const showRename = useCallback((documentId: string, fileName: string) => {
+    const seq = ++renameSeqRef.current
+    setNameOverrides((overrides) => withRename(overrides, documentId, fileName, seq))
+  }, [])
+
+  const handleRenameFile = async (documentId: string, fileName: string) => {
+    if (!roomId) return
+    const renamed = await renameDocument(roomId, documentId, fileName)
+    // Shown now rather than when the room's message arrives
+    showRename(renamed.id, renamed.fileName)
+  }
+
+  const handleDeleteFile = async (documentId: string) => {
+    if (!roomId) return
+    await deleteDocument(roomId, documentId)
+    await loadDocuments()
   }
 
   const handleRemoteCursor = useCallback((cursor: RemoteCursor) => {
@@ -144,6 +192,17 @@ function Room() {
       setRoomNews({ text: message.slug ? `${message.changedBy} picked a problem` : `${message.changedBy} removed the problem`, tone: "info" })
     }
   }, [me])
+
+  const handleFileChange = useCallback((message: FileChangeMessage) => {
+    if (message.type === "RENAMED" && message.fileName) showRename(message.documentId, message.fileName)
+    if (message.changedBy === me) return
+    const text = {
+      CREATED: `${message.changedBy} added ${message.fileName}`,
+      RENAMED: `${message.changedBy} renamed ${message.previousName} to ${message.fileName}`,
+      DELETED: `${message.changedBy} deleted ${message.previousName}`,
+    }[message.type]
+    setRoomNews({ text, tone: "info" })
+  }, [me, showRename])
 
   const handleSubmission = useCallback((message: RoomSubmissionMessage) => {
     if (message.username === me) return
@@ -173,7 +232,18 @@ function Room() {
     onRemoteCursor: handleRemoteCursor,
     onProblemChanged: handleProblemChanged,
     onSubmission: handleSubmission,
+    onFileChange: handleFileChange,
   })
+
+  // The documents as shown: the last snapshot with any renames since applied
+  const shownDocuments = useMemo(
+    () => (documents ? withCurrentNames(documents, nameOverrides) : null),
+    [documents, nameOverrides]
+  )
+
+  useEffect(() => {
+    if (shownDocuments) editorRef.current?.updateLanguages(shownDocuments)
+  }, [shownDocuments])
 
   // Drop the cursors of tabs that have left
   useEffect(() => {
@@ -231,7 +301,7 @@ function Room() {
     return <p className="centered-note">Opening the room...</p>
   }
 
-  if (error || !room || !documents) {
+  if (error || !room || !shownDocuments) {
     return (
       <div className="centered-note">
         <h1>Can't open this room</h1>
@@ -241,7 +311,7 @@ function Room() {
     )
   }
 
-  const activeDocument = documents.find((doc) => doc.id === activeDocumentId)
+  const activeDocument = shownDocuments.find((doc) => doc.id === activeDocumentId)
   const runnable = activeDocument ? isRunnable(activeDocument.fileName) : false
   const running = run.kind === "running" || run.kind === "judging"
   const shownProblem = problemSlug && problem?.slug === problemSlug ? problem : null
@@ -257,13 +327,12 @@ function Room() {
 
       <div className={`room__body${problemOpen ? " room__body--with-problem" : ""}`}>
         <FileExplorer
-          files={documents.map((doc) => doc.fileName)}
-          activeFile={activeDocument?.fileName ?? ""}
-          onFileSelect={(fileName) => {
-            const doc = documents.find((d) => d.fileName === fileName)
-            if (doc) setActiveDocumentId(doc.id)
-          }}
-          onCreateFile={handleCreateFile}
+          files={shownDocuments.map((doc) => ({ id: doc.id, name: doc.fileName }))}
+          activeId={activeDocumentId}
+          onSelect={setActiveDocumentId}
+          onCreate={handleCreateFile}
+          onRename={handleRenameFile}
+          onDelete={handleDeleteFile}
         />
 
         <main className="workspace">
@@ -319,7 +388,7 @@ function Room() {
             {activeDocument ? (
               <CodeEditor
                 ref={editorRef}
-                documents={documents}
+                documents={shownDocuments}
                 activeDocumentId={activeDocumentId}
                 readOnly={!ready}
                 onLocalOperation={applyLocalOperation}

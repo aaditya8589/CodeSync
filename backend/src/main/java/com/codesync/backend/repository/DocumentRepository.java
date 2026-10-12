@@ -22,6 +22,9 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     // Windows and macOS treat Main.java and main.java as the same file, so the room does too
     boolean existsByRoomIdAndFileNameIgnoreCase(UUID roomId, String fileName);
 
+    // Renaming main.cpp to Main.cpp must not count the file itself as a duplicate
+    boolean existsByRoomIdAndFileNameIgnoreCaseAndIdNot(UUID roomId, String fileName, UUID id);
+
     // SELECT ... FOR UPDATE: edits to the same document wait for each other, because
     // STOMP messages are handled on a thread pool and two edits could otherwise
     // both read revision N and both write N+1.

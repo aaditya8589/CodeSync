@@ -18,6 +18,8 @@ export interface CodeEditorHandle {
   setRemoteCursor: (cursor: RemoteCursor) => void
   // Removes the cursors of tabs that are no longer in the room
   retainRemoteCursors: (clientIds: Set<string>) => void
+  // Highlighting follows the file's extension, which a rename can change
+  updateLanguages: (documents: Pick<RoomDocument, "id" | "fileName">[]) => void
 }
 
 interface CodeEditorProps {
@@ -215,9 +217,35 @@ function CodeEditor({
       }
     },
 
+    updateLanguages(docs) {
+      const monaco = monacoRef.current
+      if (!monaco) return
+      for (const doc of docs) {
+        const model = modelsRef.current.get(doc.id)
+        const language = languageFor(doc.fileName)
+        if (model && model.getLanguageId() !== language) monaco.editor.setModelLanguage(model, language)
+      }
+    },
+
     reset(freshDocuments) {
       // Replacing the text loses where everyone was; their tabs send it again after the reload
       for (const clientId of [...remoteCursorsRef.current.keys()]) removeCursor(clientId)
+
+      // Files deleted since the last load. The room switches to another file right after this.
+      const fresh = new Set(freshDocuments.map((doc) => doc.id))
+      for (const [id, model] of [...modelsRef.current]) {
+        if (fresh.has(id)) continue
+        const editorInstance = editorRef.current
+        if (editorInstance?.getModel() === model) {
+          // Someone deleted the file being typed in. Without this, the rest of the typing
+          // would go into whichever file is shown next.
+          if (editorInstance.hasTextFocus() && document.activeElement instanceof HTMLElement) document.activeElement.blur()
+          editorInstance.setModel(null)
+        }
+        model.dispose()
+        modelsRef.current.delete(id)
+        viewStatesRef.current.delete(id)
+      }
 
       for (const doc of freshDocuments) {
         const model = modelsRef.current.get(doc.id)
@@ -299,7 +327,10 @@ function CodeEditor({
 
     if (!editorInstance || previous === activeDocumentId) return
 
-    viewStatesRef.current.set(previous, editorInstance.saveViewState())
+    // The previous file may just have been deleted, by someone else: then this switch is not
+    // the user's choice, so the editor is not focused for them either
+    const switchedByUser = modelsRef.current.has(previous)
+    if (switchedByUser) viewStatesRef.current.set(previous, editorInstance.saveViewState())
 
     const model = modelsRef.current.get(activeDocumentId)
     if (!model) return
@@ -307,7 +338,7 @@ function CodeEditor({
     editorInstance.setModel(model)
     const viewState = viewStatesRef.current.get(activeDocumentId)
     if (viewState) editorInstance.restoreViewState(viewState)
-    editorInstance.focus()
+    if (switchedByUser) editorInstance.focus()
     layoutLabels(editorInstance, remoteCursorsRef.current)
   }, [activeDocumentId])
 

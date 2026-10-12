@@ -116,6 +116,11 @@ public ResponseEntity<String> handleRoomNotFound(
         return ResponseEntity.status(HttpStatus.CONFLICT).body(exception.getMessage());
     }
 
+    @ExceptionHandler(LastFileException.class)
+    public ResponseEntity<String> handleLastFile(LastFileException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(exception.getMessage());
+    }
+
     @ExceptionHandler(ProblemNotFoundException.class)
     public ResponseEntity<String> handleProblemNotFound(ProblemNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(exception.getMessage());

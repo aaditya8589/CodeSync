@@ -6,6 +6,8 @@ import com.codesync.backend.entity.DocumentOperation;
 import com.codesync.backend.exception.DocumentNotFoundException;
 import com.codesync.backend.exception.DuplicateFileException;
 import com.codesync.backend.exception.InvalidFileNameException;
+import com.codesync.backend.exception.LastFileException;
+import com.codesync.backend.entity.Room;
 import com.codesync.backend.exception.RoomNotFoundException;
 import com.codesync.backend.exception.InvalidRevisionException;
 import com.codesync.backend.history.DocumentHistoryService;
@@ -13,6 +15,7 @@ import com.codesync.backend.exception.ResyncRequiredException;
 import com.codesync.backend.ot.TextOperation;
 import com.codesync.backend.repository.DocumentOperationRepository;
 import com.codesync.backend.repository.DocumentRepository;
+import com.codesync.backend.repository.DocumentSnapshotRepository;
 import com.codesync.backend.repository.RoomRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,51 +41,129 @@ public class DocumentService {
     private final RoomService roomService;
     private final DocumentHistoryService historyService;
     private final RoomRepository roomRepository;
+    private final DocumentSnapshotRepository documentSnapshotRepository;
 
     public DocumentService(
             DocumentRepository documentRepository,
             DocumentOperationRepository documentOperationRepository,
             RoomService roomService,
             DocumentHistoryService historyService,
-            RoomRepository roomRepository
+            RoomRepository roomRepository,
+            DocumentSnapshotRepository documentSnapshotRepository
     ) {
         this.documentRepository = documentRepository;
         this.documentOperationRepository = documentOperationRepository;
         this.roomService = roomService;
         this.historyService = historyService;
         this.roomRepository = roomRepository;
+        this.documentSnapshotRepository = documentSnapshotRepository;
     }
 
     @Transactional
     public DocumentResponse createDocument(UUID roomId, String fileName, String username) {
         roomService.checkRoomAccess(roomId, username);
+        Room room = lockRoom(roomId);
 
-        String name = fileName == null ? null : fileName.strip();
-        String problem = FileTemplates.problemWith(name);
-        if (problem != null) {
-            throw new InvalidFileNameException(problem);
-        }
+        String name = validName(fileName);
         if (documentRepository.countByRoomId(roomId) >= FileTemplates.MAX_FILES_PER_ROOM) {
             throw new InvalidFileNameException(
                     "A room can have at most " + FileTemplates.MAX_FILES_PER_ROOM + " files");
         }
         if (documentRepository.existsByRoomIdAndFileNameIgnoreCase(roomId, name)) {
-            throw new DuplicateFileException("A file named " + name + " already exists in this room");
+            throw duplicate(name);
         }
 
         Document document;
         try {
-            document = documentRepository.saveAndFlush(new Document(
-                    roomRepository.findById(roomId).orElseThrow(() -> new RoomNotFoundException("Room not found")),
-                    name,
-                    FileTemplates.starterContent(name)
-            ));
+            document = documentRepository.saveAndFlush(new Document(room, name, FileTemplates.starterContent(name)));
         } catch (DataIntegrityViolationException exception) {
-            // Two people created the same name at the same moment; the unique constraint caught it
-            throw new DuplicateFileException("A file named " + name + " already exists in this room");
+            // The unique constraint is the last line of defence if the checks above were bypassed
+            throw duplicate(name);
         }
 
         log.info("{} created {} in room {}", username, name, roomId);
+        return toResponse(document);
+    }
+
+    public record RenamedDocument(DocumentResponse document, String previousName) {
+    }
+
+    /**
+     * Changes only the name. The id, text and revision stay the same, so edits in flight are
+     * unaffected and the history carries over. A new extension changes the language it runs as.
+     */
+    @Transactional
+    public RenamedDocument renameDocument(UUID roomId, UUID documentId, String fileName, String username) {
+        roomService.checkRoomAccess(roomId, username);
+        lockRoom(roomId);
+        Document document = findDocumentForUpdate(roomId, documentId);
+
+        String name = validName(fileName);
+        String previous = document.getFileName();
+        if (name.equals(previous)) {
+            return new RenamedDocument(toResponse(document), previous);
+        }
+        if (documentRepository.existsByRoomIdAndFileNameIgnoreCaseAndIdNot(roomId, name, documentId)) {
+            throw duplicate(name);
+        }
+
+        document.setFileName(name);
+        try {
+            documentRepository.saveAndFlush(document);
+        } catch (DataIntegrityViolationException exception) {
+            throw duplicate(name);
+        }
+
+        log.info("{} renamed {} to {} in room {}", username, previous, name, roomId);
+        return new RenamedDocument(toResponse(document), previous);
+    }
+
+    /**
+     * Deletes the file with its operation log and snapshots. The document row is locked first,
+     * so an edit that is being applied finishes before, and one that arrives later finds no
+     * document and makes its tab reload. A room always keeps at least one file.
+     *
+     * @return the name the file had
+     */
+    @Transactional
+    public String deleteDocument(UUID roomId, UUID documentId, String username) {
+        roomService.checkRoomAccess(roomId, username);
+        lockRoom(roomId);
+        Document document = findDocumentForUpdate(roomId, documentId);
+
+        if (documentRepository.countByRoomId(roomId) <= 1) {
+            throw new LastFileException("A room needs at least one file; add another before deleting this one");
+        }
+
+        String name = document.getFileName();
+        int operations = documentOperationRepository.deleteByDocumentId(documentId);
+        documentSnapshotRepository.deleteByDocumentId(documentId);
+        documentRepository.delete(document);
+        documentRepository.flush();
+
+        log.info("{} deleted {} ({} edits) in room {}", username, name, operations, roomId);
+        return name;
+    }
+
+    private Room lockRoom(UUID roomId) {
+        return roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found"));
+    }
+
+    private static String validName(String fileName) {
+        String name = fileName == null ? null : fileName.strip();
+        String problem = FileTemplates.problemWith(name);
+        if (problem != null) {
+            throw new InvalidFileNameException(problem);
+        }
+        return name;
+    }
+
+    private static DuplicateFileException duplicate(String name) {
+        return new DuplicateFileException("A file named " + name + " already exists in this room");
+    }
+
+    private static DocumentResponse toResponse(Document document) {
         return new DocumentResponse(
                 document.getId(),
                 document.getFileName(),
@@ -99,13 +180,7 @@ public class DocumentService {
 
         return documentRepository.findByRoomIdOrderByFileNameAsc(roomId)
                 .stream()
-                .map(doc -> new DocumentResponse(
-                        doc.getId(),
-                        doc.getFileName(),
-                        doc.getContent(),
-                        doc.getUpdatedAt(),
-                        doc.getRevision()
-                ))
+                .map(DocumentService::toResponse)
                 .toList();
     }
 
@@ -147,7 +222,10 @@ public class DocumentService {
 
     private Document lockDocument(UUID roomId, UUID documentId, String username) {
         roomService.checkRoomAccess(roomId, username);
+        return findDocumentForUpdate(roomId, documentId);
+    }
 
+    private Document findDocumentForUpdate(UUID roomId, UUID documentId) {
         return documentRepository
                 .findByIdAndRoomIdForUpdate(documentId, roomId)
                 .orElseThrow(() ->
