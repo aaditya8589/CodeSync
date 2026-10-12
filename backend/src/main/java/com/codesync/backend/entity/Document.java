@@ -66,6 +66,12 @@ public class Document {
         return fileName;
     }
 
+    // Only the name changes: the id, content and revision stay, so open editors and the
+    // history keep working
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+
     public String getContent() {
         return content;
     }

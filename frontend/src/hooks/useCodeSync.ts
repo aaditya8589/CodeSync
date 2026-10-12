@@ -60,6 +60,16 @@ export interface RoomSubmissionMessage {
   failedTest: number | null
 }
 
+export interface FileChangeMessage {
+  type: "CREATED" | "RENAMED" | "DELETED"
+  documentId: string
+  // The new name; null for a deletion
+  fileName: string | null
+  // The name before a rename or deletion; null for a creation
+  previousName: string | null
+  changedBy: string
+}
+
 interface UseCodeSyncProps {
   roomId: string
   // The snapshot the editor currently shows. A new array means a fresh snapshot.
@@ -70,6 +80,7 @@ interface UseCodeSyncProps {
   onRemoteCursor: (cursor: RemoteCursor) => void
   onProblemChanged?: (message: RoomProblemMessage) => void
   onSubmission?: (message: RoomSubmissionMessage) => void
+  onFileChange?: (message: FileChangeMessage) => void
 }
 
 const GAP_TIMEOUT_MS = 3000
@@ -85,6 +96,7 @@ function useCodeSync({
   onRemoteCursor,
   onProblemChanged,
   onSubmission,
+  onFileChange,
 }: UseCodeSyncProps) {
   // One ID per tab: the same user can have the room open twice
   const [clientId] = useState(() => crypto.randomUUID())
@@ -106,9 +118,9 @@ function useCodeSync({
   // Remote cursors from a revision this tab has not reached yet, retried after each update
   const earlyCursorsRef = useRef(new Map<string, RemoteCursorMessage>())
 
-  const callbacksRef = useRef({ onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission })
+  const callbacksRef = useRef({ onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange })
   useEffect(() => {
-    callbacksRef.current = { onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission }
+    callbacksRef.current = { onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange }
   })
 
   // A cursor is only sent while its document has no unconfirmed edits. Then the editor shows
@@ -270,15 +282,19 @@ function useCodeSync({
         client.subscribe(`/topic/rooms/${roomId}/code`, (frame) => {
           handleBroadcast(JSON.parse(frame.body))
         })
-        // Someone added a file: reload so it gets a model and its own sync state
         client.subscribe(`/topic/rooms/${roomId}/problem`, (frame) => {
           callbacksRef.current.onProblemChanged?.(JSON.parse(frame.body))
         })
         client.subscribe(`/topic/rooms/${roomId}/submissions`, (frame) => {
           callbacksRef.current.onSubmission?.(JSON.parse(frame.body))
         })
-        client.subscribe(`/topic/rooms/${roomId}/files`, () => {
-          requestResync("a file was added")
+        client.subscribe(`/topic/rooms/${roomId}/files`, (frame) => {
+          const message: FileChangeMessage = JSON.parse(frame.body)
+          callbacksRef.current.onFileChange?.(message)
+          // A rename keeps the document's id, text and revision, so the editor and the sync
+          // state stay as they are. An added or deleted file changes the set of documents:
+          // reload so a new file gets a model and sync state, and a deleted one loses them.
+          if (message.type !== "RENAMED") requestResync(`a file was ${message.type.toLowerCase()}`)
         })
         client.subscribe(`/topic/rooms/${roomId}/presence`, (frame) => {
           setMembers(JSON.parse(frame.body).members)

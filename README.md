@@ -14,7 +14,7 @@ A real-time collaborative code editor: several people edit the same files at the
 - **Server-authoritative documents.** Every edit is validated, rebased and saved by the server; refreshing, joining late or restarting the server keeps the code.
 - **Sandboxed execution of C++, Python and Java, with input.** Run compiles and runs the room's saved code in a throw-away Docker container with no network and hard limits, and reports judge-style results (compile error, runtime error, time limit, memory limit).
 - **Problems with a judge.** Attach a problem to a room and its statement appears next to the code for everyone. Submit judges the open file on hidden tests (Accepted, Wrong answer on test 3, time or memory limit, runtime or compile error), and everyone in the room sees the verdict live.
-- **Files.** Anyone in the room can add files (`.cpp`, `.py`, `.java`, `.txt`, ...), which start with a template for their language and appear in everyone's file list immediately.
+- **Files.** Anyone in the room can add files (`.cpp`, `.py`, `.java`, `.txt`, ...), which start with a template for their language, and rename or delete them (F2 / Delete work too). Every change appears in everyone's file list immediately; a rename keeps the file's history and does not interrupt anyone typing in it.
 - **Rooms and access control.** JWT authentication, room membership checked on every REST call, WebSocket subscription and edit.
 
 ## Architecture
@@ -58,6 +58,8 @@ flowchart LR
 | **One container per submission, not per test** | The program is compiled once and run against every test inside the same container, each with its own time limit; starting a container and compiling per test would multiply the cost. Each test's output is read back by its announced length, so a program cannot print something that looks like a result. |
 | **Problems as text files** | Problems live in `backend/src/main/resources/problems`, generated with reference solutions (`tools/problems/generate.py`) and loaded into the database at startup. An independent solution for every problem runs through the real judge in CI, so a wrong expected output would fail the build. |
 | **Hidden tests stay hidden** | Only the examples show input, expected and actual output. Hidden tests return their verdict and time, not even their error output, since a program could print its input there. |
+| **A rename changes only the name** | The file keeps its id, text and revision, so open editors are updated in place without reloading and edits in flight are unaffected; only a new extension changes the highlighting and the language it runs as. Adding or deleting a file changes the set of files, so those make every tab reload the list. |
+| **File changes in a room run one at a time** | Creating, renaming and deleting a file lock the room's row first, so the duplicate-name, 20-file and keep-one-file checks always see the previous change. Deleting also locks the file, so an edit being applied finishes first and a later one gets "not found" and makes its tab reload. |
 | **Synchronous execution with a 2-slot limit** | Simple and measurable; a queue with separate workers is the next step only if real load needs it. |
 
 ## Sandbox
@@ -176,4 +178,4 @@ frontend/src
 
 ## Roadmap
 
-Deployment, more problems, file rename and delete, and a shared input box for the room.
+Deployment, more problems, and a shared input box for the room.

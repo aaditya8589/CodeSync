@@ -53,3 +53,43 @@ export async function createDocument(roomId: string, fileName: string): Promise<
 
   return response.json()
 }
+
+export async function renameDocument(roomId: string, documentId: string, fileName: string): Promise<RoomDocument> {
+  const token = localStorage.getItem("token")
+
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/documents/${documentId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fileName }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await response.text() || `Could not rename the file: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+export async function deleteDocument(roomId: string, documentId: string): Promise<void> {
+  const token = localStorage.getItem("token")
+
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/documents/${documentId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (!response.ok) {
+    throw new Error(await response.text() || `Could not delete the file: ${response.status}`)
+  }
+}
