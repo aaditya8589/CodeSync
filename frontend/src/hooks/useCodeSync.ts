@@ -45,6 +45,21 @@ interface LocalCursor {
   head: number
 }
 
+export interface RoomProblemMessage {
+  slug: string | null
+  changedBy: string
+}
+
+export interface RoomSubmissionMessage {
+  username: string
+  problemTitle: string
+  fileName: string
+  verdict: string
+  passed: number
+  total: number
+  failedTest: number | null
+}
+
 interface UseCodeSyncProps {
   roomId: string
   // The snapshot the editor currently shows. A new array means a fresh snapshot.
@@ -53,6 +68,8 @@ interface UseCodeSyncProps {
   onRemoteOperation: (documentId: string, operation: TextOperation) => void
   onResyncNeeded: (reason: string) => void
   onRemoteCursor: (cursor: RemoteCursor) => void
+  onProblemChanged?: (message: RoomProblemMessage) => void
+  onSubmission?: (message: RoomSubmissionMessage) => void
 }
 
 const GAP_TIMEOUT_MS = 3000
@@ -66,6 +83,8 @@ function useCodeSync({
   onRemoteOperation,
   onResyncNeeded,
   onRemoteCursor,
+  onProblemChanged,
+  onSubmission,
 }: UseCodeSyncProps) {
   // One ID per tab: the same user can have the room open twice
   const [clientId] = useState(() => crypto.randomUUID())
@@ -87,9 +106,9 @@ function useCodeSync({
   // Remote cursors from a revision this tab has not reached yet, retried after each update
   const earlyCursorsRef = useRef(new Map<string, RemoteCursorMessage>())
 
-  const callbacksRef = useRef({ onRemoteOperation, onResyncNeeded, onRemoteCursor })
+  const callbacksRef = useRef({ onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission })
   useEffect(() => {
-    callbacksRef.current = { onRemoteOperation, onResyncNeeded, onRemoteCursor }
+    callbacksRef.current = { onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission }
   })
 
   // A cursor is only sent while its document has no unconfirmed edits. Then the editor shows
@@ -252,6 +271,12 @@ function useCodeSync({
           handleBroadcast(JSON.parse(frame.body))
         })
         // Someone added a file: reload so it gets a model and its own sync state
+        client.subscribe(`/topic/rooms/${roomId}/problem`, (frame) => {
+          callbacksRef.current.onProblemChanged?.(JSON.parse(frame.body))
+        })
+        client.subscribe(`/topic/rooms/${roomId}/submissions`, (frame) => {
+          callbacksRef.current.onSubmission?.(JSON.parse(frame.body))
+        })
         client.subscribe(`/topic/rooms/${roomId}/files`, () => {
           requestResync("a file was added")
         })

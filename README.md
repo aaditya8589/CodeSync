@@ -13,6 +13,7 @@ A real-time collaborative code editor: several people edit the same files at the
 - **Version history.** Browse earlier versions of a file (edits grouped by pauses, with who made them), compare any version with the current file side by side, and restore it for everyone in the room.
 - **Server-authoritative documents.** Every edit is validated, rebased and saved by the server; refreshing, joining late or restarting the server keeps the code.
 - **Sandboxed execution of C++, Python and Java, with input.** Run compiles and runs the room's saved code in a throw-away Docker container with no network and hard limits, and reports judge-style results (compile error, runtime error, time limit, memory limit).
+- **Problems with a judge.** Attach a problem to a room and its statement appears next to the code for everyone. Submit judges the open file on hidden tests (Accepted, Wrong answer on test 3, time or memory limit, runtime or compile error), and everyone in the room sees the verdict live.
 - **Files.** Anyone in the room can add files (`.cpp`, `.py`, `.java`, `.txt`, ...), which start with a template for their language and appear in everyone's file list immediately.
 - **Rooms and access control.** JWT authentication, room membership checked on every REST call, WebSocket subscription and edit.
 
@@ -54,6 +55,9 @@ flowchart LR
 | **Presence kept in memory, cursors never touch the database** | Presence only matters while a connection is open. The subscription check records which rooms a connection may use, so frequent cursor messages are checked against memory; the sender's name and tab ID come from the server, so nobody can move someone else's cursor. |
 | **Snapshots plus the operation log for history** | The log stores how many characters an edit deleted, not which, so old versions cannot be rebuilt backwards from the current text. A full snapshot is saved at a file's first edit and every 100 revisions; any version is the nearest earlier snapshot plus at most 100 replayed operations. |
 | **Restore is an ordinary edit** | Restoring computes one operation from the current text to the old text and applies it like typing, so every open editor receives it live, concurrent edits are transformed as usual, and a restore can itself be undone from the history. |
+| **One container per submission, not per test** | The program is compiled once and run against every test inside the same container, each with its own time limit; starting a container and compiling per test would multiply the cost. Each test's output is read back by its announced length, so a program cannot print something that looks like a result. |
+| **Problems as text files** | Problems live in `backend/src/main/resources/problems`, generated with reference solutions (`tools/problems/generate.py`) and loaded into the database at startup. An independent solution for every problem runs through the real judge in CI, so a wrong expected output would fail the build. |
+| **Hidden tests stay hidden** | Only the examples show input, expected and actual output. Hidden tests return their verdict and time, not even their error output, since a program could print its input there. |
 | **Synchronous execution with a 2-slot limit** | Simple and measurable; a queue with separate workers is the next step only if real load needs it. |
 
 ## Sandbox
@@ -85,6 +89,7 @@ The class name taken from Java source goes into a shell command, so only a plain
 | Version history (Java) | 11: grouping edits into versions, and against the real database: every one of 250 revisions rebuilt exactly across snapshots, restore and undoing a restore, history that starts after older edits, invalid revisions, non-members |
 | Presence (Java) | 15: the presence registry, and the controller rejecting cursors from connections that did not pass the room check |
 | Code runner | 20 with a fake `docker` (every outcome including hung containers and Docker being down, each language's command and image), 3 for language detection, and 25 against real Docker in all three languages |
+| Judge | 8 verdict rules, 3 problem-file parsing (including every bundled problem), 3 judge output parsing, 4 against real Docker (an independent solution accepted on every problem in C++, Python and Java; wrong answers and `int` overflow caught), 5 against the real database (problems, attaching to rooms, submitting) |
 | Files | 4 for file names and templates, 6 against the real database (creation, case-insensitive duplicates, invalid names, the 20-file limit, non-members) |
 | Integration scripts | `frontend/scripts/ot-server-check.mjs` (two clients against the running server) and `frontend/scripts/ws-security-check.mjs` (a non-member trying to read, inject, and join presence) |
 
@@ -171,4 +176,4 @@ frontend/src
 
 ## Roadmap
 
-More languages, a problem set with test cases, deployment.
+Deployment, more problems, file rename and delete, and a shared input box for the room.

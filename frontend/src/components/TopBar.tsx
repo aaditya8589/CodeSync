@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, NavLink, useNavigate } from "react-router-dom"
 import { signOut } from "../auth/session"
 
 interface TopBarProps {
@@ -21,6 +21,10 @@ function TopBar({ title, children }: TopBarProps) {
           </>
         )}
       </div>
+      <nav className="topbar__nav" aria-label="Main">
+        <NavLink to="/dashboard">Rooms</NavLink>
+        <NavLink to="/problems">Problems</NavLink>
+      </nav>
       <div className="topbar__end">
         {children}
         <button

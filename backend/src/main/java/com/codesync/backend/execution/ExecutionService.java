@@ -52,6 +52,21 @@ public class ExecutionService {
         this.slots = new Semaphore(maxConcurrent);
     }
 
+    /**
+     * Runs a program against several inputs for the judge. Shares the same slots as Run, so
+     * submissions and runs together never exceed the machine's limit.
+     */
+    public CodeRunner.TestRun runTests(Language language, String source, List<String> inputs) {
+        if (!slots.tryAcquire()) {
+            throw new ExecutionBusyException("The code runner is busy. Try again in a few seconds.");
+        }
+        try {
+            return codeRunner.runTests(language, source, inputs);
+        } finally {
+            slots.release();
+        }
+    }
+
     // Deliberately not @Transactional: a run can take seconds, and it must not hold a
     // database connection while it waits for Docker.
     public ExecutionResult run(UUID roomId, UUID documentId, String stdin, String username) {

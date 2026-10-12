@@ -5,6 +5,8 @@ export interface Room {
   name: string
   ownerId: string
   createdAt: string
+  // The problem the room is solving, if any
+  problemSlug?: string | null
 }
 
 export async function getMyRooms(): Promise<Room[]> {

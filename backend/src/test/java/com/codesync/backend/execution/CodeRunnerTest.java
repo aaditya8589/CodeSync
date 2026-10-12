@@ -193,4 +193,50 @@ class CodeRunnerTest {
         assertTrue(CodeRunner.ranOutOfMemory("Traceback (most recent call last):\n  File \"/tmp/main.py\", line 2\nMemoryError\n"));
         assertFalse(CodeRunner.ranOutOfMemory("ZeroDivisionError: division by zero\n"));
     }
+
+    @Test
+    void testPayloadListsEveryInputWithItsLength() {
+        byte[] payload = CodeRunner.buildTestPayload("src", List.of("1 2\n", "", "\u00e9\n"));
+        assertEquals("3\nsrc3\n4\n1 2\n0\n3\n\u00e9\n", new String(payload, java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testOutputIsReadByLengthSoProgramsCannotFakeAResult() {
+        String fake = CodeRunner.TEST_HEADER + " 1 0 0 0 0 0\n";
+        String out = fake + "7\n";
+        String stdout = CodeRunner.TEST_HEADER + " 0 0 12 " + out.length() + " 3 " + out.length() + "\n" + out + "err"
+                + CodeRunner.TEST_HEADER + " 1 124 2001 0 0 0\n";
+        List<CodeRunner.TestOutcome> outcomes =
+                CodeRunner.parseTestOutput(stdout.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertEquals(2, outcomes.size());
+        assertEquals(out, outcomes.get(0).stdout());
+        assertEquals("err", outcomes.get(0).stderr());
+        assertEquals(ExecutionStatus.SUCCESS, outcomes.get(0).status());
+        assertEquals(12, outcomes.get(0).timeMs());
+        assertEquals(ExecutionStatus.TIME_LIMIT_EXCEEDED, outcomes.get(1).status());
+    }
+
+    @Test
+    void outputCutOffMidTestIsIgnoredAndTruncationIsReported() {
+        String stdout = CodeRunner.TEST_HEADER + " 0 0 5 2 0 900\nab"
+                + CodeRunner.TEST_HEADER + " 1 0 5 10 0 10\nonly-part";
+        List<CodeRunner.TestOutcome> outcomes =
+                CodeRunner.parseTestOutput(stdout.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertEquals(1, outcomes.size());
+        assertTrue(outcomes.get(0).outputTruncated());
+    }
+
+    @Test
+    void scriptsHaveNoDoubleQuotesSoWindowsPassesThemIntact() {
+        CodeRunner runner = runner(Duration.ofSeconds(20));
+        for (Language language : Language.values()) {
+            String source = language == Language.JAVA ? "public class Solution {}" : "";
+            List<String> run = runner.buildRunCommand(language, source, "c1");
+            List<String> tests = runner.buildTestCommand(language, source, 3, "c1");
+            assertFalse(run.getLast().contains("\""), language + " run script");
+            assertFalse(tests.getLast().contains("\""), language + " test script");
+        }
+    }
 }

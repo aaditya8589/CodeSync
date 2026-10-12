@@ -15,8 +15,18 @@ import CodeEditor, { type CodeEditorHandle } from "../components/CodeEditor"
 import OutputPanel, { type RunState } from "../components/OutputPanel"
 import HistoryPanel from "../components/HistoryPanel"
 import { currentUsername } from "../auth/session"
+import RoomProblemPanel from "../arena/RoomProblemPanel"
+import {
+  VERDICT_TEXT,
+  attachProblem,
+  getProblem,
+  submitDocument,
+  verdictTone,
+  type ProblemDetail,
+  type Verdict,
+} from "../services/arenaService"
 
-import useCodeSync, { type RemoteCursor } from "../hooks/useCodeSync"
+import useCodeSync, { type RemoteCursor, type RoomProblemMessage, type RoomSubmissionMessage } from "../hooks/useCodeSync"
 import type { TextOperation } from "../ot/textOperation"
 import { isRunnable, runLabel } from "../editor/language"
 
@@ -31,6 +41,11 @@ function Room() {
   const [editorReady, setEditorReady] = useState(false)
   const [run, setRun] = useState<RunState>({ kind: "idle" })
   const [copied, setCopied] = useState(false)
+  const [problemSlug, setProblemSlug] = useState<string | null>(null)
+  const [problem, setProblem] = useState<ProblemDetail | null>(null)
+  const [problemOpen, setProblemOpen] = useState(false)
+  // The latest thing that happened to the room's problem, from anyone in the room
+  const [roomNews, setRoomNews] = useState<{ text: string; tone: "ok" | "err" | "limit" | "info" } | null>(null)
   const [stdin, setStdin] = useState("")
   const [historyOpen, setHistoryOpen] = useState(false)
 
@@ -53,6 +68,8 @@ function Room() {
         ])
 
         setRoom(roomData)
+        setProblemSlug(roomData.problemSlug ?? null)
+        setProblemOpen(Boolean(roomData.problemSlug))
         setDocuments(docs)
         setActiveDocumentId(docs[0]?.id ?? "")
       } catch (error) {
@@ -118,6 +135,35 @@ function Room() {
 
   const handleEditorReady = useCallback(() => setEditorReady(true), [])
 
+  const me = currentUsername()
+
+  const handleProblemChanged = useCallback((message: RoomProblemMessage) => {
+    setProblemSlug(message.slug)
+    if (message.slug) setProblemOpen(true)
+    if (message.changedBy !== me) {
+      setRoomNews({ text: message.slug ? `${message.changedBy} picked a problem` : `${message.changedBy} removed the problem`, tone: "info" })
+    }
+  }, [me])
+
+  const handleSubmission = useCallback((message: RoomSubmissionMessage) => {
+    if (message.username === me) return
+    const verdict = message.verdict as Verdict
+    setRoomNews({
+      text: `${message.username} submitted ${message.fileName}: ${VERDICT_TEXT[verdict]} (${message.passed}/${message.total})`,
+      tone: verdictTone(verdict),
+    })
+  }, [me])
+
+  // Load the statement whenever the room's problem changes
+  useEffect(() => {
+    if (!problemSlug) return
+    let cancelled = false
+    getProblem(problemSlug)
+      .then((detail) => { if (!cancelled) setProblem(detail) })
+      .catch(() => { if (!cancelled) setProblem(null) })
+    return () => { cancelled = true }
+  }, [problemSlug])
+
   const { ready, members, applyLocalOperation, sendCursor } = useCodeSync({
     roomId: roomId ?? "",
     documents,
@@ -125,6 +171,8 @@ function Room() {
     onRemoteOperation: handleRemoteOperation,
     onResyncNeeded: handleResyncNeeded,
     onRemoteCursor: handleRemoteCursor,
+    onProblemChanged: handleProblemChanged,
+    onSubmission: handleSubmission,
   })
 
   // Drop the cursors of tabs that have left
@@ -140,6 +188,26 @@ function Room() {
       setRun({ kind: "done", result: await runDocument(roomId, activeDocumentId, stdin) })
     } catch (error) {
       setRun({ kind: "failed", message: error instanceof Error ? error.message : "Run failed" })
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!roomId || !activeDocumentId) return
+    setRun({ kind: "judging" })
+    try {
+      setRun({ kind: "judged", result: await submitDocument(roomId, activeDocumentId) })
+    } catch (error) {
+      setRun({ kind: "failed", message: error instanceof Error ? error.message : "Submit failed" })
+    }
+  }
+
+  const chooseProblem = async (slug: string | null) => {
+    if (!roomId) return
+    try {
+      const result = await attachProblem(roomId, slug)
+      setProblemSlug(result.slug)
+    } catch (error) {
+      setRoomNews({ text: error instanceof Error ? error.message : "Couldn't change the problem", tone: "err" })
     }
   }
 
@@ -175,18 +243,19 @@ function Room() {
 
   const activeDocument = documents.find((doc) => doc.id === activeDocumentId)
   const runnable = activeDocument ? isRunnable(activeDocument.fileName) : false
-  const running = run.kind === "running"
+  const running = run.kind === "running" || run.kind === "judging"
+  const shownProblem = problemSlug && problem?.slug === problemSlug ? problem : null
 
   return (
     <div className="room">
       <TopBar title={room.name}>
-        <PresenceSeats members={members} me={currentUsername()} />
+        <PresenceSeats members={members} me={me} />
         <button type="button" className="button" onClick={() => void copyRoomId()}>
           {copied ? "Copied" : "Copy room ID"}
         </button>
       </TopBar>
 
-      <div className="room__body">
+      <div className={`room__body${problemOpen ? " room__body--with-problem" : ""}`}>
         <FileExplorer
           files={documents.map((doc) => doc.fileName)}
           activeFile={activeDocument?.fileName ?? ""}
@@ -203,7 +272,18 @@ function Room() {
             <span className={`status-dot${ready ? " status-dot--live" : ""}`}>
               {ready ? "Live" : "Connecting..."}
             </span>
+            {roomNews && (
+              <span className={`room-news room-news--${roomNews.tone}`} role="status">{roomNews.text}</span>
+            )}
             <div className="editor-bar__actions">
+              <button
+                type="button"
+                className="button button--quiet"
+                aria-pressed={problemOpen}
+                onClick={() => setProblemOpen((open) => !open)}
+              >
+                Problem
+              </button>
               <button
                 type="button"
                 className="button button--quiet"
@@ -214,13 +294,24 @@ function Room() {
               </button>
               <button
                 type="button"
-                className="button button--primary"
+                className={`button${problemSlug ? "" : " button--primary"}`}
                 onClick={handleRun}
                 disabled={running || !ready || !runnable}
-                title={runnable ? undefined : "Only .cpp, .py and .java files can be run"}
+                title={runnable ? "Run with the input below" : "Only .cpp, .py and .java files can be run"}
               >
-                {running ? "Running..." : `Run ${activeDocument ? runLabel(activeDocument.fileName) : ""}`}
+                {run.kind === "running" ? "Running..." : `Run ${activeDocument ? runLabel(activeDocument.fileName) : ""}`}
               </button>
+              {problemSlug && (
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onClick={handleSubmit}
+                  disabled={running || !ready || !runnable}
+                  title="Judge this file on all of the problem's tests"
+                >
+                  {run.kind === "judging" ? "Judging..." : "Submit"}
+                </button>
+              )}
             </div>
           </div>
 
@@ -257,6 +348,14 @@ function Room() {
             <OutputPanel state={run} />
           </div>
         </main>
+
+        {problemOpen && (
+          <RoomProblemPanel
+            problem={shownProblem}
+            onChoose={(slug) => void chooseProblem(slug)}
+            onClose={() => setProblemOpen(false)}
+          />
+        )}
       </div>
 
       {historyOpen && activeDocument && (
