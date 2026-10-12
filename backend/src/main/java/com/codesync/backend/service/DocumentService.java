@@ -138,8 +138,7 @@ public class DocumentService {
         String name = document.getFileName();
         int operations = documentOperationRepository.deleteByDocumentId(documentId);
         documentSnapshotRepository.deleteByDocumentId(documentId);
-        documentRepository.delete(document);
-        documentRepository.flush();
+        documentRepository.deleteNow(documentId);
 
         log.info("{} deleted {} ({} edits) in room {}", username, name, operations, roomId);
         return name;

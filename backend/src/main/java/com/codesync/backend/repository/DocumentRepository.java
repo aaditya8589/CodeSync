@@ -4,6 +4,7 @@ import com.codesync.backend.entity.Document;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -31,4 +32,12 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select d from Document d where d.id = :id and d.room.id = :roomId")
     Optional<Document> findByIdAndRoomIdForUpdate(@Param("id") UUID id, @Param("roomId") UUID roomId);
+
+    // Bulk statement like the ones for the operation log and snapshots. Hibernate does not see
+    // rows removed that way, so afterwards it forgets everything it was tracking; otherwise a
+    // snapshot or log entry loaded earlier in the transaction would still point at this
+    // document, and the next flush would refuse to continue.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from Document d where d.id = :id")
+    int deleteNow(@Param("id") UUID id);
 }
