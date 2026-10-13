@@ -7,6 +7,9 @@ import com.codesync.backend.dto.UserResponse;
 import com.codesync.backend.entity.User;
 import com.codesync.backend.service.AuthService;
 import com.codesync.backend.security.JwtService;
+import com.codesync.backend.security.GoogleTokenVerifier;
+import com.codesync.backend.dto.GoogleConfigResponse;
+import com.codesync.backend.dto.GoogleLoginRequest;
 import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
@@ -19,14 +22,30 @@ public class AuthController {
 
     private final AuthService authService;
     private final JwtService jwtService;
+    private final GoogleTokenVerifier googleTokenVerifier;
 
     public AuthController(
         AuthService authService,
-        JwtService jwtService
+        JwtService jwtService,
+        GoogleTokenVerifier googleTokenVerifier
 ) {
     this.authService = authService;
     this.jwtService = jwtService;
+    this.googleTokenVerifier = googleTokenVerifier;
 }
+
+    /** Whether to show the Google button, and the client id it needs; null when not configured. */
+    @GetMapping("/google/config")
+    public ResponseEntity<GoogleConfigResponse> googleConfig() {
+        return ResponseEntity.ok(new GoogleConfigResponse(googleTokenVerifier.clientId()));
+    }
+
+    /** Exchanges a Google ID token (from Google's sign-in button) for a CodeSync token. */
+    @PostMapping("/google")
+    public ResponseEntity<LoginResponse> loginWithGoogle(@RequestBody GoogleLoginRequest request) {
+        User user = authService.loginWithGoogle(googleTokenVerifier.verify(request.credential()));
+        return ResponseEntity.ok(new LoginResponse(jwtService.generateToken(user.getUsername())));
+    }
 
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(

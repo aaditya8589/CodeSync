@@ -23,7 +23,8 @@ export async function login(
   )
 
   if (!response.ok) {
-    throw new Error("Invalid email or password")
+    // The server says when the account has no password because it signs in with Google
+    throw new Error((await response.text()) || "Invalid email or password")
   }
 
   return response.json()

@@ -79,6 +79,12 @@ docker compose ps                # db, backend and web should be "running"/"heal
 
 Open `https://<your-domain>`: register, create a room, and run some code.
 
+### Optional: Sign in with Google
+
+In your Google OAuth client (see the main README), add `https://<your-domain>` under
+**Authorized JavaScript origins**, put the client id in `.env` as `GOOGLE_CLIENT_ID=...`, and run
+`docker compose up -d` again. The frontend asks the backend for the id, so nothing is rebuilt.
+
 ## Updating
 
 ```bash

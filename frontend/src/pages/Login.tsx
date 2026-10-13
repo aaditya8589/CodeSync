@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import AuthLayout from "../components/AuthLayout"
+import GoogleSignIn from "../components/GoogleSignIn"
 import { login } from "../services/authService"
 
 function Login() {
@@ -25,7 +26,9 @@ function Login() {
       setError(
         reason instanceof TypeError
           ? "Can't reach the server. Check that the backend is running."
-          : "That email and password don't match an account."
+          : reason instanceof Error && reason.message.includes("Google")
+            ? "This account was created with Google. Use the Google button below."
+            : "That email and password don't match an account."
       )
     } finally {
       setLoading(false)
@@ -68,6 +71,8 @@ function Login() {
         <button type="submit" className="button button--primary" disabled={loading}>
           {loading ? "Signing in..." : "Sign in"}
         </button>
+
+        <GoogleSignIn text="signin_with" />
 
         <p className="auth__switch">
           New here? <Link to="/register">Create an account</Link>

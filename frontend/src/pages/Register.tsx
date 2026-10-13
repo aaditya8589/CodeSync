@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import AuthLayout from "../components/AuthLayout"
+import GoogleSignIn from "../components/GoogleSignIn"
 import { API_BASE_URL } from "../config"
 
 // Validation errors arrive as {"field": "message"}; other errors as plain text
@@ -115,6 +116,8 @@ function Register() {
         <button type="submit" className="button button--primary" disabled={loading}>
           {loading ? "Creating account..." : "Create account"}
         </button>
+
+        <GoogleSignIn text="signup_with" />
 
         <p className="auth__switch">
           Already have an account? <Link to="/login">Sign in</Link>
