@@ -15,6 +15,7 @@ A real-time collaborative code editor: several people edit the same files at the
 - **Sandboxed execution of C++, Python and Java, with input.** Run compiles and runs the room's saved code in a throw-away Docker container with no network and hard limits, and reports judge-style results (compile error, runtime error, time limit, memory limit).
 - **Problems with a judge.** Attach a problem to a room and its statement appears next to the code for everyone. Submit judges the open file on hidden tests (Accepted, Wrong answer on test 3, time or memory limit, runtime or compile error), and everyone in the room sees the verdict live.
 - **Files.** Anyone in the room can add files (`.cpp`, `.py`, `.java`, `.txt`, ...), which start with a template for their language, and rename or delete them (F2 / Delete work too). Every change appears in everyone's file list immediately; a rename keeps the file's history and does not interrupt anyone typing in it.
+- **Sign in with Google** (optional) next to email and password. The backend verifies Google's ID token itself (signature against Google's published keys, issuer, audience, expiry) and then issues its own JWT, so the rest of the app is unchanged.
 - **Rooms and access control.** JWT authentication, room membership checked on every REST call, WebSocket subscription and edit.
 
 ## Architecture
@@ -60,6 +61,7 @@ flowchart LR
 | **Hidden tests stay hidden** | Only the examples show input, expected and actual output. Hidden tests return their verdict and time, not even their error output, since a program could print its input there. |
 | **A rename changes only the name** | The file keeps its id, text and revision, so open editors are updated in place without reloading and edits in flight are unaffected; only a new extension changes the highlighting and the language it runs as. Adding or deleting a file changes the set of files, so those make every tab reload the list. |
 | **File changes in a room run one at a time** | Creating, renaming and deleting a file lock the room's row first, so the duplicate-name, 20-file and keep-one-file checks always see the previous change. Deleting also locks the file, so an edit being applied finishes first and a later one gets "not found" and makes its tab reload. |
+| **Google's ID token checked by the backend, then our own JWT** | The browser gets a signed token from Google's button and the backend verifies it with Google's public keys (cached as long as Google's headers allow), so no Google secret is stored and no redirect flow is needed. After that the user is an ordinary CodeSync user with the same JWT as a password login. |
 | **Synchronous execution with a 2-slot limit** | Simple and measurable; a queue with separate workers is the next step only if real load needs it. |
 
 ## Sandbox
@@ -142,7 +144,16 @@ All secrets and environment-specific values come from environment variables, so 
 | `JWT_EXPIRATION_MINUTES` | no | `60` | How long a login lasts |
 | `CODESYNC_IMAGE_CPP`, `CODESYNC_IMAGE_PYTHON`, `CODESYNC_IMAGE_JAVA` | no | `gcc:14`, `python:3.13-slim`, `eclipse-temurin:21-jdk` | Image used to run each language |
 | `SHOW_SQL` | no | `false` | Log every SQL query |
+| `GOOGLE_CLIENT_ID` | no | (off) | OAuth client id for "Sign in with Google"; without it the button is hidden. See below. |
 | `VITE_API_URL` (frontend, at build time) | no | `http://localhost:8080` | Backend URL; the WebSocket URL is derived from it |
+
+### Sign in with Google (optional)
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create a project, set up the **OAuth consent screen** (External, app name, your email), then **Create credentials → OAuth client ID → Web application**.
+2. Under **Authorized JavaScript origins** add `http://localhost:5173` (and later your real domain). No redirect URI is needed: the button uses a popup.
+3. Start the backend with `GOOGLE_CLIENT_ID=<the client id>`. The id is not a secret; the frontend reads it from `GET /api/auth/google/config`.
+
+A Google sign-in finds the account by Google's permanent user id, or creates one with a username from the email. It never takes over an existing password account with the same email, because registration does not prove the email belongs to whoever typed it.
 
 Generate a secret in PowerShell with a cryptographic random generator:
 

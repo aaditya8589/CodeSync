@@ -29,6 +29,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in deploy/.env}
       CORS_ALLOWED_ORIGINS: https://${DOMAIN:?Set DOMAIN in deploy/.env}
       EXECUTION_MAX_CONCURRENT: ${EXECUTION_MAX_CONCURRENT:-4}
+      # Optional; leave empty to hide the Google button
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     volumes:
       # Lets the backend start sandbox containers on this server. Whoever controls the
       # backend controls Docker, so the backend is not reachable directly: only through Caddy.

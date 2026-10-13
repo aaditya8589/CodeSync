@@ -18,8 +18,14 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
+    // Empty for accounts created with Google sign-in. Empty rather than null so that databases
+    // created before Google sign-in, where this column is NOT NULL, need no migration.
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
+
+    // Google's permanent id for the person ("sub" in the ID token). Emails can change; this does not.
+    @Column(name = "google_subject", unique = true)
+    private String googleSubject;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -32,6 +38,20 @@ public class User {
         this.email = email;
         this.passwordHash = passwordHash;
         this.createdAt = Instant.now();
+    }
+
+    public static User fromGoogle(String username, String email, String googleSubject) {
+        User user = new User(username, email, "");
+        user.googleSubject = googleSubject;
+        return user;
+    }
+
+    public boolean hasPassword() {
+        return passwordHash != null && !passwordHash.isEmpty();
+    }
+
+    public String getGoogleSubject() {
+        return googleSubject;
     }
 
     public UUID getId() {

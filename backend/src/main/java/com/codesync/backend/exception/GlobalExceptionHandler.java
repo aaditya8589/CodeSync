@@ -41,6 +41,16 @@ public class GlobalExceptionHandler {
                 .body(errors);
     }
 
+    @ExceptionHandler(InvalidGoogleTokenException.class)
+    public ResponseEntity<String> handleInvalidGoogleToken(InvalidGoogleTokenException exception) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(exception.getMessage());
+    }
+
+    @ExceptionHandler(GoogleSignInDisabledException.class)
+    public ResponseEntity<String> handleGoogleSignInDisabled(GoogleSignInDisabledException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(exception.getMessage());
+    }
+
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<String> handleInvalidCredentials(
             InvalidCredentialsException exception

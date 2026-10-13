@@ -191,6 +191,14 @@ a { color: inherit; }
 .auth__form { display: grid; gap: 16px; width: 100%; max-width: 360px; }
 .auth__form h2 { font-size: 24px; }
 .auth__switch { margin: 0; font-size: 14px; color: var(--muted); }
+
+.google-signin { display: grid; gap: 12px; }
+.google-signin__divider { display: flex; align-items: center; gap: 12px; color: var(--faint); font-size: 13px; }
+.google-signin__divider::before,
+.google-signin__divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+/* Google's iframe has a fixed height; reserving it stops the form jumping when it appears */
+.google-signin__button { min-height: 44px; }
+.google-signin__button[aria-busy="true"] { opacity: 0.5; pointer-events: none; }
 .auth__switch a { color: var(--text); }
 
 @media (max-width: 860px) {
