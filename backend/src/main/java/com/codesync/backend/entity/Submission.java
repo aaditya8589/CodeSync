@@ -47,8 +47,13 @@ public class Submission {
     @Column(name = "time_ms", nullable = false)
     private long timeMs;
 
+    // When the request arrived (not when judging finished), so waiting for the judge costs no time
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    // Set when it counts for a match's scoreboard
+    @Column(name = "match_id")
+    private UUID matchId;
 
     public Submission() {
     }
@@ -68,6 +73,16 @@ public class Submission {
         this.createdAt = Instant.now();
     }
 
+    public Submission(Problem problem, String username, UUID roomId, String fileName, String language,
+                      String source, String verdict, int passed, int total, long timeMs,
+                      UUID matchId, Instant submittedAt) {
+        this(problem, username, roomId, fileName, language, source, verdict, passed, total, timeMs);
+        this.matchId = matchId;
+        this.createdAt = submittedAt;
+    }
+
+    public UUID getMatchId() { return matchId; }
+    public Problem getProblem() { return problem; }
     public UUID getId() { return id; }
     public String getUsername() { return username; }
     public UUID getRoomId() { return roomId; }

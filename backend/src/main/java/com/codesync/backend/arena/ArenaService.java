@@ -4,6 +4,7 @@ import com.codesync.backend.dto.arena.ProblemDetail;
 import com.codesync.backend.dto.arena.ProblemSummary;
 import com.codesync.backend.dto.arena.SubmissionSummary;
 import com.codesync.backend.entity.Document;
+import com.codesync.backend.entity.Match;
 import com.codesync.backend.entity.Problem;
 import com.codesync.backend.entity.Room;
 import com.codesync.backend.entity.Submission;
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -38,10 +40,11 @@ public class ArenaService {
 
     /** What a submission needs from the database, read before the (slow) judging starts. */
     private record Attempt(UUID problemId, String problemTitle, List<ProblemFile.Test> tests,
-                           String fileName, String source) {
+                           String fileName, String source, UUID matchId) {
     }
 
-    public record Judged(String problemTitle, String fileName, Judge.Result result) {
+    /** matchId is set when the submission counts toward a match's standings. */
+    public record Judged(String problemTitle, String fileName, Judge.Result result, UUID matchId) {
     }
 
     private final ProblemRepository problemRepository;
@@ -128,19 +131,30 @@ public class ArenaService {
      */
     public Judged submit(UUID roomId, UUID documentId, String username) {
         roomService.checkRoomAccess(roomId, username);
+        // The match clock is read when the request arrives; judging may finish after the end
+        Instant submittedAt = Instant.now();
 
         Attempt attempt = transactions.execute(status -> {
             Room room = roomRepository.findById(roomId).orElseThrow(() -> new RoomNotFoundException("Room not found"));
-            Problem problem = room.getProblem();
+            Document document = documentRepository.findByIdAndRoomId(documentId, roomId)
+                    .filter(doc -> doc.isVisibleTo(username, submittedAt))
+                    .orElseThrow(() -> new DocumentNotFoundException("Document not found in this room"));
+
+            // A match file is judged against its own problem, and counts while its match runs;
+            // anything else is practice on the room's problem
+            Problem problem = document.getProblem() != null ? document.getProblem() : room.getProblem();
             if (problem == null) {
                 throw new InvalidRunRequestException("Pick a problem for this room before submitting");
             }
-            Document document = documentRepository.findByIdAndRoomId(documentId, roomId)
-                    .orElseThrow(() -> new DocumentNotFoundException("Document not found in this room"));
+            Match match = document.getMatch();
+            UUID matchId = match != null && match.isRunningAt(submittedAt)
+                    && username.equals(document.getOwnerUsername()) ? match.getId() : null;
+
             List<ProblemFile.Test> tests = problem.getTestCases().stream()
                     .map(test -> new ProblemFile.Test(test.isSample(), test.getInput(), test.getExpectedOutput()))
                     .toList();
-            return new Attempt(problem.getId(), problem.getTitle(), tests, document.getFileName(), document.getContent());
+            return new Attempt(problem.getId(), problem.getTitle(), tests, document.getFileName(),
+                    document.getContent(), matchId);
         });
 
         Language language = Language.fromFileName(attempt.fileName())
@@ -161,12 +175,14 @@ public class ArenaService {
                 result.verdict().name(),
                 result.passed(),
                 result.total(),
-                result.maxTimeMs()
+                result.maxTimeMs(),
+                attempt.matchId(),
+                submittedAt
         )));
 
         log.info("Submission by {} for {}: {} ({}/{})", username, attempt.problemTitle(),
                 result.verdict(), result.passed(), result.total());
-        return new Judged(attempt.problemTitle(), attempt.fileName(), result);
+        return new Judged(attempt.problemTitle(), attempt.fileName(), result, attempt.matchId());
     }
 
     private Problem findProblem(String slug) {

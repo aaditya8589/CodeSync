@@ -1,6 +1,5 @@
 package com.codesync.backend.controller;
 
-import com.codesync.backend.dto.AppliedOperationMessage;
 import com.codesync.backend.dto.OperationErrorMessage;
 import com.codesync.backend.dto.OperationMessage;
 import com.codesync.backend.exception.ResyncRequiredException;
@@ -26,13 +25,16 @@ public class WebSocketController {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final DocumentService documentService;
+    private final RoomBroadcaster broadcaster;
 
     public WebSocketController(
             SimpMessagingTemplate messagingTemplate,
-            DocumentService documentService
+            DocumentService documentService,
+            RoomBroadcaster broadcaster
     ) {
         this.messagingTemplate = messagingTemplate;
         this.documentService = documentService;
+        this.broadcaster = broadcaster;
     }
 
     @MessageMapping("/rooms/{roomId}/code")
@@ -58,16 +60,7 @@ public class WebSocketController {
                     username
             );
 
-            messagingTemplate.convertAndSend(
-                    "/topic/rooms/" + roomId + "/code",
-                    new AppliedOperationMessage(
-                            applied.documentId().toString(),
-                            applied.revision(),
-                            applied.operation().toJson(),
-                            message.clientId(),
-                            username
-                    )
-            );
+            broadcaster.operation(UUID.fromString(roomId), applied, message.clientId(), username);
 
         } catch (RuntimeException exception) {
             // The sender is waiting for an acknowledgement, so it must hear about a rejection.

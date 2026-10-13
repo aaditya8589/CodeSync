@@ -4,6 +4,7 @@ import { WEBSOCKET_URL } from "../config"
 import { OtClient, type ServerOperation } from "../ot/otClient"
 import type { TextOperation } from "../ot/textOperation"
 import type { RoomDocument } from "../services/documentService"
+import type { MatchChangedMessage } from "../services/matchService"
 
 interface AppliedOperationMessage extends ServerOperation {
   documentId: string
@@ -81,6 +82,7 @@ interface UseCodeSyncProps {
   onProblemChanged?: (message: RoomProblemMessage) => void
   onSubmission?: (message: RoomSubmissionMessage) => void
   onFileChange?: (message: FileChangeMessage) => void
+  onMatchChanged?: (message: MatchChangedMessage) => void
 }
 
 const GAP_TIMEOUT_MS = 3000
@@ -97,6 +99,7 @@ function useCodeSync({
   onProblemChanged,
   onSubmission,
   onFileChange,
+  onMatchChanged,
 }: UseCodeSyncProps) {
   // One ID per tab: the same user can have the room open twice
   const [clientId] = useState(() => crypto.randomUUID())
@@ -118,9 +121,9 @@ function useCodeSync({
   // Remote cursors from a revision this tab has not reached yet, retried after each update
   const earlyCursorsRef = useRef(new Map<string, RemoteCursorMessage>())
 
-  const callbacksRef = useRef({ onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange })
+  const callbacksRef = useRef({ onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange, onMatchChanged })
   useEffect(() => {
-    callbacksRef.current = { onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange }
+    callbacksRef.current = { onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange, onMatchChanged }
   })
 
   // A cursor is only sent while its document has no unconfirmed edits. Then the editor shows
@@ -282,20 +285,29 @@ function useCodeSync({
         client.subscribe(`/topic/rooms/${roomId}/code`, (frame) => {
           handleBroadcast(JSON.parse(frame.body))
         })
+        // Edits to this user's private match files come only on their own channel
+        client.subscribe(`/user/queue/rooms/${roomId}/code`, (frame) => {
+          handleBroadcast(JSON.parse(frame.body))
+        })
+        client.subscribe(`/topic/rooms/${roomId}/match`, (frame) => {
+          callbacksRef.current.onMatchChanged?.(JSON.parse(frame.body))
+        })
         client.subscribe(`/topic/rooms/${roomId}/problem`, (frame) => {
           callbacksRef.current.onProblemChanged?.(JSON.parse(frame.body))
         })
         client.subscribe(`/topic/rooms/${roomId}/submissions`, (frame) => {
           callbacksRef.current.onSubmission?.(JSON.parse(frame.body))
         })
-        client.subscribe(`/topic/rooms/${roomId}/files`, (frame) => {
-          const message: FileChangeMessage = JSON.parse(frame.body)
+        const handleFileChange = (body: string) => {
+          const message: FileChangeMessage = JSON.parse(body)
           callbacksRef.current.onFileChange?.(message)
           // A rename keeps the document's id, text and revision, so the editor and the sync
           // state stay as they are. An added or deleted file changes the set of documents:
           // reload so a new file gets a model and sync state, and a deleted one loses them.
           if (message.type !== "RENAMED") requestResync(`a file was ${message.type.toLowerCase()}`)
-        })
+        }
+        client.subscribe(`/topic/rooms/${roomId}/files`, (frame) => handleFileChange(frame.body))
+        client.subscribe(`/user/queue/rooms/${roomId}/files`, (frame) => handleFileChange(frame.body))
         client.subscribe(`/topic/rooms/${roomId}/presence`, (frame) => {
           setMembers(JSON.parse(frame.body).members)
           // Someone joined or left: send our cursor again so a newcomer sees it

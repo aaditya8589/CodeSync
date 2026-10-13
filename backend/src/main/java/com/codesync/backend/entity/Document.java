@@ -44,7 +44,59 @@ public class Document {
     @Column(name = "history_start_revision")
     private Long historyStartRevision;
 
+    // Set on a player's file in a match: until privateUntil (the match's end) only the owner may
+    // see or change it. After that it is an ordinary room file, so everyone's code is revealed.
+    @Column(name = "owner_username", length = 50)
+    private String ownerUsername;
+
+    @Column(name = "private_until")
+    private Instant privateUntil;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "match_id")
+    private Match match;
+
+    // The match problem this file is judged against
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "problem_id")
+    private Problem problem;
+
     public Document() {
+    }
+
+    public static Document forMatchPlayer(Room room, String fileName, String content, String owner,
+                                          Match match, Problem problem) {
+        Document document = new Document(room, fileName, content);
+        document.ownerUsername = owner;
+        document.privateUntil = match.getEndsAt();
+        document.match = match;
+        document.problem = problem;
+        return document;
+    }
+
+    /** The one rule every way of reaching a file goes through: list, edit, history, run, submit. */
+    public boolean isVisibleTo(String username, Instant now) {
+        return !isPrivateAt(now) || ownerUsername.equals(username);
+    }
+
+    public boolean isPrivateAt(Instant now) {
+        return privateUntil != null && now.isBefore(privateUntil);
+    }
+
+    public String getOwnerUsername() {
+        return ownerUsername;
+    }
+
+    public Instant getPrivateUntil() {
+        return privateUntil;
+    }
+
+    public Match getMatch() {
+        return match;
+    }
+
+    public Problem getProblem() {
+        return problem;
     }
 
     public Document(Room room, String fileName, String content) {

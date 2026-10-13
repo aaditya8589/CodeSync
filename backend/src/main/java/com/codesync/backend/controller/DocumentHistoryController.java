@@ -1,6 +1,5 @@
 package com.codesync.backend.controller;
 
-import com.codesync.backend.dto.AppliedOperationMessage;
 import com.codesync.backend.dto.HistoryResponse;
 import com.codesync.backend.dto.RestoreRequest;
 import com.codesync.backend.dto.RestoreResponse;
@@ -8,7 +7,6 @@ import com.codesync.backend.dto.RevisionResponse;
 import com.codesync.backend.history.DocumentHistoryService;
 import com.codesync.backend.service.DocumentService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,16 +26,16 @@ public class DocumentHistoryController {
 
     private final DocumentHistoryService historyService;
     private final DocumentService documentService;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final RoomBroadcaster broadcaster;
 
     public DocumentHistoryController(
             DocumentHistoryService historyService,
             DocumentService documentService,
-            SimpMessagingTemplate messagingTemplate
+            RoomBroadcaster broadcaster
     ) {
         this.historyService = historyService;
         this.documentService = documentService;
-        this.messagingTemplate = messagingTemplate;
+        this.broadcaster = broadcaster;
     }
 
     @GetMapping("/history")
@@ -75,16 +73,7 @@ public class DocumentHistoryController {
         }
 
         // Sent after the transaction has committed, exactly like a typed edit
-        messagingTemplate.convertAndSend(
-                "/topic/rooms/" + roomId + "/code",
-                new AppliedOperationMessage(
-                        applied.documentId().toString(),
-                        applied.revision(),
-                        applied.operation().toJson(),
-                        RESTORE_CLIENT_ID,
-                        username
-                )
-        );
+        broadcaster.operation(roomId, applied, RESTORE_CLIENT_ID, username);
         return ResponseEntity.ok(new RestoreResponse(applied.revision(), true));
     }
 }

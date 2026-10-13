@@ -10,6 +10,7 @@ import com.codesync.backend.dto.arena.SubmissionMessage;
 import com.codesync.backend.dto.arena.SubmissionSummary;
 import com.codesync.backend.dto.arena.SubmitRequest;
 import com.codesync.backend.exception.InvalidRunRequestException;
+import com.codesync.backend.dto.match.MatchChangedMessage;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
@@ -79,6 +80,10 @@ public class ArenaController {
                 new SubmissionMessage(authentication.getName(), judged.problemTitle(), judged.fileName(),
                         result.verdict().name(), result.passed(), result.total(), result.failedTest())
         );
+        if (judged.matchId() != null) {
+            messagingTemplate.convertAndSend("/topic/rooms/" + roomId + "/match",
+                    new MatchChangedMessage("SUBMITTED", authentication.getName()));
+        }
         return ResponseEntity.ok(result);
     }
 

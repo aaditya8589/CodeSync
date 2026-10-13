@@ -6,6 +6,10 @@ export interface RoomDocument {
   content: string
   updatedAt: string
   revision: number
+  // Match files only: the player it belongs to, until when only they can see it, and its problem
+  owner?: string | null
+  privateUntil?: string | null
+  problemSlug?: string | null
 }
 
 export async function getDocuments(roomId: string): Promise<RoomDocument[]> {

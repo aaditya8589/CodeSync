@@ -3,6 +3,8 @@ import { useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 export interface ExplorerFile {
   id: string
   name: string
+  // A private match file: only this user sees it, and it cannot be deleted until the match ends
+  locked?: boolean
 }
 
 interface FileExplorerProps {
@@ -39,6 +41,15 @@ function TrashIcon() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
       <path d="M3 4.5h10 M6.5 4.5V3h3v1.5 M4.5 4.5l.7 8.5h5.6l.7-8.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" strokeWidth="1.4" />
     </svg>
   )
 }
@@ -109,7 +120,7 @@ function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete 
     if (event.key === "F2") {
       event.preventDefault()
       startRename(file)
-    } else if (event.key === "Delete" && canDelete) {
+    } else if (event.key === "Delete" && canDelete && !file.locked) {
       event.preventDefault()
       setError("")
       setMode({ kind: "confirm-delete", id: file.id })
@@ -193,6 +204,12 @@ function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete 
               >
                 <span className="files__ext" aria-hidden="true">{extensionOf(file.name)}</span>
                 <span className="files__name">{file.name}</span>
+                {file.locked && (
+                  <span className="files__lock" title="Only you can see this until the match ends">
+                    <LockIcon />
+                    <span className="visually-hidden">(private until the match ends)</span>
+                  </span>
+                )}
               </button>
               <span className="files__actions">
                 <button
@@ -209,8 +226,8 @@ function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete 
                   type="button"
                   className="icon-button icon-button--danger"
                   aria-label={`Delete ${file.name}`}
-                  title={canDelete ? "Delete" : "A room needs at least one file"}
-                  disabled={busy || !canDelete}
+                  title={file.locked ? "Match files can be deleted after the match" : canDelete ? "Delete" : "A room needs at least one file"}
+                  disabled={busy || !canDelete || file.locked}
                   onClick={() => {
                     setError("")
                     setMode({ kind: "confirm-delete", id: file.id })

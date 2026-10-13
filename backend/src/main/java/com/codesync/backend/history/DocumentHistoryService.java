@@ -129,7 +129,9 @@ public class DocumentHistoryService {
 
     private Document findDocument(UUID roomId, UUID documentId, String username) {
         roomService.checkRoomAccess(roomId, username);
+        // History would show a private match file's code just as well as the file itself
         return documentRepository.findByIdAndRoomId(documentId, roomId)
+                .filter(doc -> doc.isVisibleTo(username, java.time.Instant.now()))
                 .orElseThrow(() -> new DocumentNotFoundException("Document not found in this room"));
     }
 }

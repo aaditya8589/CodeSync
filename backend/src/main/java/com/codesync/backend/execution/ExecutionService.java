@@ -78,8 +78,10 @@ public class ExecutionService {
         }
 
         // Runs the saved, server-side copy: everyone in the room runs the same code
+        // Running someone's private match file would print or leak its behaviour
         Document document = documentRepository
                 .findByIdAndRoomId(documentId, roomId)
+                .filter(doc -> doc.isVisibleTo(username, java.time.Instant.now()))
                 .orElseThrow(() -> new DocumentNotFoundException("Document not found in this room"));
 
         Language language = Language.fromFileName(document.getFileName())
