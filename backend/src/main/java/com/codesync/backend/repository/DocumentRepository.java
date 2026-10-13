@@ -40,4 +40,13 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from Document d where d.id = :id")
     int deleteNow(@Param("id") UUID id);
+
+    // Players' match files do not count toward the room's file limit
+    long countByRoomIdAndMatchIsNull(UUID roomId);
+
+    // Ending a match early reveals its files at once. Hibernate's in-memory copies would still
+    // say "private", so they are dropped; callers re-read what they need afterwards.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Document d set d.privateUntil = :until where d.match.id = :matchId and d.privateUntil > :until")
+    int revealMatchFiles(@Param("matchId") UUID matchId, @Param("until") java.time.Instant until);
 }

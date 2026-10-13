@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../config"
+import { authorizedFetch } from "./http"
 
 export type ExecutionStatus =
   | "SUCCESS"
@@ -28,7 +29,7 @@ export async function runDocument(
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_BASE_URL}/api/rooms/${roomId}/documents/${documentId}/run`,
     {
       method: "POST",

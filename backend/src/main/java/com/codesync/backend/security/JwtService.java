@@ -21,7 +21,7 @@ public class JwtService {
 
     public JwtService(
             @Value("${codesync.jwt.secret:}") String secret,
-            @Value("${codesync.jwt.expiration-minutes:60}") long expirationMinutes
+            @Value("${codesync.jwt.expiration-minutes:480}") long expirationMinutes
     ) {
         // Fail at startup rather than run with a guessable key: anyone who knows the key
         // can sign a token for any username.

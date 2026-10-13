@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link, Navigate, useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import CreateRoom from "../components/CreateRoom"
 import JoinRoom from "../components/JoinRoom"
 import TopBar from "../components/TopBar"
@@ -20,10 +20,6 @@ function Dashboard() {
       .catch(() => setError("Couldn't load your rooms. Check that the backend is running, then reload."))
       .finally(() => setLoading(false))
   }, [])
-
-  if (!localStorage.getItem("token")) {
-    return <Navigate to="/login" replace />
-  }
 
   return (
     <>

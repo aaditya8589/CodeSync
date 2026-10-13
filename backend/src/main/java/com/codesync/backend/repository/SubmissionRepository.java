@@ -16,4 +16,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     List<String> findSolvedSlugs(@Param("username") String username);
 
     boolean existsByProblemIdAndUsernameAndVerdict(UUID problemId, String username, String verdict);
+
+    List<Submission> findByMatchIdOrderByCreatedAtAsc(UUID matchId);
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, Navigate, useParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 
 import {
   getRoom,
@@ -33,6 +33,10 @@ import {
   type Verdict,
 } from "../services/arenaService"
 
+import MatchPanel from "../match/MatchPanel"
+import MatchButton from "../match/MatchButton"
+import { isPrivateNow, serverOffset } from "../match/clock"
+import { endMatch, getMatch, joinMatch, startMatch, type Match, type MatchChangedMessage } from "../services/matchService"
 import useCodeSync, {
   type FileChangeMessage,
   type RemoteCursor,
@@ -55,7 +59,17 @@ function Room() {
   const [copied, setCopied] = useState(false)
   const [problemSlug, setProblemSlug] = useState<string | null>(null)
   const [problem, setProblem] = useState<ProblemDetail | null>(null)
-  const [problemOpen, setProblemOpen] = useState(false)
+  // The side panel: the room's problem, or the match
+  const [panel, setPanel] = useState<"problem" | "match" | null>(null)
+  const problemOpen = panel === "problem"
+  const setProblemOpen = (open: boolean | ((was: boolean) => boolean)) =>
+    setPanel((current) => {
+      const next = typeof open === "function" ? open(current === "problem") : open
+      return next ? "problem" : current === "problem" ? null : current
+    })
+  const [match, setMatch] = useState<Match | null>(null)
+  // How far the server's clock is ahead of this browser's
+  const [clockOffset, setClockOffset] = useState(0)
   // The latest thing that happened to the room's problem, from anyone in the room
   const [roomNews, setRoomNews] = useState<{ text: string; tone: "ok" | "err" | "limit" | "info" } | null>(null)
   const [stdin, setStdin] = useState("")
@@ -68,7 +82,7 @@ function Room() {
   // How many renames have been shown; see files/fileNames.ts
   const renameSeqRef = useRef(0)
   // A file this tab just created, to open as soon as a load includes it
-  const openWhenLoadedRef = useRef<string | null>(null)
+  const openWhenLoadedRef = useRef<((doc: RoomDocument) => boolean) | null>(null)
   // Read by loadDocuments, which must not be recreated (and restart the sync) on every switch
   const activeIdRef = useRef(activeDocumentId)
   useEffect(() => {
@@ -120,10 +134,10 @@ function Room() {
     editorRef.current?.reset(fresh)
     setDocuments(fresh)
     setNameOverrides((overrides) => afterSnapshot(overrides, renamesBefore))
-    const wanted = openWhenLoadedRef.current
-    if (wanted && fresh.some((doc) => doc.id === wanted)) {
+    const wanted = openWhenLoadedRef.current ? fresh.find(openWhenLoadedRef.current) : undefined
+    if (wanted) {
       openWhenLoadedRef.current = null
-      setActiveDocumentId(wanted)
+      setActiveDocumentId(wanted.id)
     } else if (!fresh.some((doc) => doc.id === activeIdRef.current)) {
       // The open file was deleted: show another one
       setActiveDocumentId(fresh[0]?.id ?? "")
@@ -155,7 +169,7 @@ function Room() {
     // Switching needs the editor to have a model for the new file, so it happens in whichever
     // load first includes it: this one, or the newer one started by the server's "file added"
     // message, which then replaces this one
-    openWhenLoadedRef.current = created.id
+    openWhenLoadedRef.current = (doc) => doc.id === created.id
     await loadDocuments()
   }
 
@@ -184,6 +198,87 @@ function Room() {
   const handleEditorReady = useCallback(() => setEditorReady(true), [])
 
   const me = currentUsername()
+
+  const showMatch = useCallback((found: Match | null) => {
+    setMatch(found)
+    if (found) setClockOffset(serverOffset(found.serverTime, Date.now()))
+  }, [])
+
+  const loadMatch = useCallback(async () => {
+    if (!roomId) return
+    try {
+      showMatch(await getMatch(roomId))
+    } catch {
+      // The panel keeps what it showed; the next change or reload brings it up to date
+    }
+  }, [roomId, showMatch])
+
+  useEffect(() => {
+    if (!roomId) return
+    let cancelled = false
+    getMatch(roomId)
+      .then((found) => {
+        if (cancelled) return
+        showMatch(found)
+        if (found?.running) setPanel("match")
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [roomId, showMatch])
+
+  // When time runs out every private file becomes visible: reload them and the final standings.
+  // The server decides; this only asks again just after the moment it said.
+  useEffect(() => {
+    if (!match?.running) return
+    const wait = Date.parse(match.endsAt) - (Date.now() + clockOffset) + 500
+    const timer = setTimeout(() => {
+      void loadMatch()
+      void resync("the match ended")
+    }, Math.max(0, wait))
+    return () => clearTimeout(timer)
+  }, [match?.running, match?.endsAt, clockOffset, loadMatch, resync])
+
+  // After starting or joining, open this player's file for problem A once the load includes it
+  const openMyFirstMatchFile = (started: Match) => {
+    const first = started.problems[0]?.slug
+    openWhenLoadedRef.current = (doc) => doc.owner === me && doc.problemSlug === first
+  }
+
+  const handleStartMatch = async (slugs: string[], minutes: number) => {
+    if (!roomId) return
+    const started = await startMatch(roomId, slugs, minutes)
+    showMatch(started)
+    openMyFirstMatchFile(started)
+    await loadDocuments()
+  }
+
+  const handleJoinMatch = async () => {
+    if (!roomId) return
+    const joined = await joinMatch(roomId)
+    showMatch(joined)
+    openMyFirstMatchFile(joined)
+    await loadDocuments()
+  }
+
+  const handleEndMatch = async () => {
+    if (!roomId) return
+    showMatch(await endMatch(roomId))
+    await loadDocuments()
+  }
+
+  const handleMatchChanged = useCallback((message: MatchChangedMessage) => {
+    void loadMatch()
+    if (message.event === "ENDED") void resync("the match was ended")
+    if (message.username === me) return
+    if (message.event === "STARTED") {
+      setPanel("match")
+      setRoomNews({ text: `${message.username} started a match`, tone: "info" })
+    } else if (message.event === "JOINED") {
+      setRoomNews({ text: `${message.username} joined the match`, tone: "info" })
+    } else if (message.event === "ENDED") {
+      setRoomNews({ text: `${message.username} ended the match`, tone: "info" })
+    }
+  }, [loadMatch, resync, me])
 
   const handleProblemChanged = useCallback((message: RoomProblemMessage) => {
     setProblemSlug(message.slug)
@@ -233,7 +328,24 @@ function Room() {
     onProblemChanged: handleProblemChanged,
     onSubmission: handleSubmission,
     onFileChange: handleFileChange,
+    onMatchChanged: handleMatchChanged,
   })
+
+  // A private match file's caret would tell other players where its owner is working, so it is
+  // never sent. The server cannot filter it: it is the owner's own browser that would send it.
+  const documentsRef = useRef(documents)
+  useEffect(() => {
+    documentsRef.current = documents
+  })
+  const offsetRef = useRef(clockOffset)
+  useEffect(() => {
+    offsetRef.current = clockOffset
+  })
+  const sendVisibleCursor = useCallback((documentId: string, anchor: number, head: number) => {
+    const doc = documentsRef.current?.find((d) => d.id === documentId)
+    if (doc && isPrivateNow(doc.privateUntil, offsetRef.current, Date.now())) return
+    sendCursor(documentId, anchor, head)
+  }, [sendCursor])
 
   // The documents as shown: the last snapshot with any renames since applied
   const shownDocuments = useMemo(
@@ -293,10 +405,6 @@ function Room() {
     }
   }
 
-  if (!localStorage.getItem("token")) {
-    return <Navigate to="/login" replace />
-  }
-
   if (loading) {
     return <p className="centered-note">Opening the room...</p>
   }
@@ -315,6 +423,14 @@ function Room() {
   const runnable = activeDocument ? isRunnable(activeDocument.fileName) : false
   const running = run.kind === "running" || run.kind === "judging"
   const shownProblem = problemSlug && problem?.slug === problemSlug ? problem : null
+  // A match file is judged against its own problem; any other file against the room's
+  const matchProblem = activeDocument?.problemSlug
+    ? match?.problems.find((p) => p.slug === activeDocument.problemSlug)
+    : undefined
+  const canSubmit = Boolean(problemSlug || activeDocument?.problemSlug)
+  const submitLabel = matchProblem && match?.running && activeDocument?.owner === me
+    ? `Submit ${matchProblem.letter}`
+    : "Submit"
 
   return (
     <div className="room">
@@ -325,9 +441,14 @@ function Room() {
         </button>
       </TopBar>
 
-      <div className={`room__body${problemOpen ? " room__body--with-problem" : ""}`}>
+      <div className={`room__body${panel ? " room__body--with-problem" : ""}`}>
         <FileExplorer
-          files={shownDocuments.map((doc) => ({ id: doc.id, name: doc.fileName }))}
+          files={shownDocuments.map((doc) => ({
+            id: doc.id,
+            name: doc.fileName,
+            // Private while the match it belongs to is running; the reload at the end unlocks it
+            locked: Boolean(match?.running && doc.privateUntil && Date.parse(doc.privateUntil) === Date.parse(match.endsAt)),
+          }))}
           activeId={activeDocumentId}
           onSelect={setActiveDocumentId}
           onCreate={handleCreateFile}
@@ -345,6 +466,12 @@ function Room() {
               <span className={`room-news room-news--${roomNews.tone}`} role="status">{roomNews.text}</span>
             )}
             <div className="editor-bar__actions">
+              <MatchButton
+                match={match}
+                offset={clockOffset}
+                pressed={panel === "match"}
+                onClick={() => setPanel((current) => current === "match" ? null : "match")}
+              />
               <button
                 type="button"
                 className="button button--quiet"
@@ -363,22 +490,22 @@ function Room() {
               </button>
               <button
                 type="button"
-                className={`button${problemSlug ? "" : " button--primary"}`}
+                className={`button${canSubmit ? "" : " button--primary"}`}
                 onClick={handleRun}
                 disabled={running || !ready || !runnable}
                 title={runnable ? "Run with the input below" : "Only .cpp, .py and .java files can be run"}
               >
                 {run.kind === "running" ? "Running..." : `Run ${activeDocument ? runLabel(activeDocument.fileName) : ""}`}
               </button>
-              {problemSlug && (
+              {canSubmit && (
                 <button
                   type="button"
                   className="button button--primary"
                   onClick={handleSubmit}
                   disabled={running || !ready || !runnable}
-                  title="Judge this file on all of the problem's tests"
+                  title={matchProblem ? `Judge this file on ${matchProblem.title}` : "Judge this file on all of the problem's tests"}
                 >
-                  {run.kind === "judging" ? "Judging..." : "Submit"}
+                  {run.kind === "judging" ? "Judging..." : submitLabel}
                 </button>
               )}
             </div>
@@ -392,7 +519,7 @@ function Room() {
                 activeDocumentId={activeDocumentId}
                 readOnly={!ready}
                 onLocalOperation={applyLocalOperation}
-                onCursorChange={sendCursor}
+                onCursorChange={sendVisibleCursor}
                 onReady={handleEditorReady}
               />
             ) : (
@@ -417,6 +544,18 @@ function Room() {
             <OutputPanel state={run} />
           </div>
         </main>
+
+        {panel === "match" && (
+          <MatchPanel
+            match={match}
+            offset={clockOffset}
+            me={me}
+            onStart={handleStartMatch}
+            onJoin={handleJoinMatch}
+            onEnd={handleEndMatch}
+            onClose={() => setPanel(null)}
+          />
+        )}
 
         {problemOpen && (
           <RoomProblemPanel

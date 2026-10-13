@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../config"
+import { authorizedFetch } from "./http"
 
 export type Verdict =
   | "ACCEPTED"
@@ -79,7 +80,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem("token")
   if (!token) throw new Error("No authentication token found")
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authorizedFetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init.headers },
   })

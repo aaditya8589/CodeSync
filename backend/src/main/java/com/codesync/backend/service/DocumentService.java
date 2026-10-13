@@ -7,6 +7,7 @@ import com.codesync.backend.exception.DocumentNotFoundException;
 import com.codesync.backend.exception.DuplicateFileException;
 import com.codesync.backend.exception.InvalidFileNameException;
 import com.codesync.backend.exception.LastFileException;
+import com.codesync.backend.exception.MatchConflictException;
 import com.codesync.backend.entity.Room;
 import com.codesync.backend.exception.RoomNotFoundException;
 import com.codesync.backend.exception.InvalidRevisionException;
@@ -23,6 +24,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,7 +35,8 @@ public class DocumentService {
 
     public static final int MAX_DOCUMENT_LENGTH = 500_000;
 
-    public record AppliedOperation(UUID documentId, long revision, TextOperation operation) {
+    /** privateTo: the owner when the document is a player's private match file, so only they get it. */
+    public record AppliedOperation(UUID documentId, long revision, TextOperation operation, String privateTo) {
     }
 
     private final DocumentRepository documentRepository;
@@ -65,7 +68,7 @@ public class DocumentService {
         Room room = lockRoom(roomId);
 
         String name = validName(fileName);
-        if (documentRepository.countByRoomId(roomId) >= FileTemplates.MAX_FILES_PER_ROOM) {
+        if (documentRepository.countByRoomIdAndMatchIsNull(roomId) >= FileTemplates.MAX_FILES_PER_ROOM) {
             throw new InvalidFileNameException(
                     "A room can have at most " + FileTemplates.MAX_FILES_PER_ROOM + " files");
         }
@@ -85,7 +88,7 @@ public class DocumentService {
         return toResponse(document);
     }
 
-    public record RenamedDocument(DocumentResponse document, String previousName) {
+    public record RenamedDocument(DocumentResponse document, String previousName, String privateTo) {
     }
 
     /**
@@ -96,12 +99,13 @@ public class DocumentService {
     public RenamedDocument renameDocument(UUID roomId, UUID documentId, String fileName, String username) {
         roomService.checkRoomAccess(roomId, username);
         lockRoom(roomId);
-        Document document = findDocumentForUpdate(roomId, documentId);
+        Document document = findDocumentForUpdate(roomId, documentId, username);
+        String privateTo = privateTo(document);
 
         String name = validName(fileName);
         String previous = document.getFileName();
         if (name.equals(previous)) {
-            return new RenamedDocument(toResponse(document), previous);
+            return new RenamedDocument(toResponse(document), previous, privateTo);
         }
         if (documentRepository.existsByRoomIdAndFileNameIgnoreCaseAndIdNot(roomId, name, documentId)) {
             throw duplicate(name);
@@ -115,7 +119,7 @@ public class DocumentService {
         }
 
         log.info("{} renamed {} to {} in room {}", username, previous, name, roomId);
-        return new RenamedDocument(toResponse(document), previous);
+        return new RenamedDocument(toResponse(document), previous, privateTo);
     }
 
     /**
@@ -129,8 +133,11 @@ public class DocumentService {
     public String deleteDocument(UUID roomId, UUID documentId, String username) {
         roomService.checkRoomAccess(roomId, username);
         lockRoom(roomId);
-        Document document = findDocumentForUpdate(roomId, documentId);
+        Document document = findDocumentForUpdate(roomId, documentId, username);
 
+        if (document.isPrivateAt(Instant.now())) {
+            throw new MatchConflictException("Match files can't be deleted until the match ends");
+        }
         if (documentRepository.countByRoomId(roomId) <= 1) {
             throw new LastFileException("A room needs at least one file; add another before deleting this one");
         }
@@ -168,8 +175,15 @@ public class DocumentService {
                 document.getFileName(),
                 document.getContent(),
                 document.getUpdatedAt(),
-                document.getRevision()
+                document.getRevision(),
+                document.getOwnerUsername(),
+                document.getPrivateUntil(),
+                document.getProblem() == null ? null : document.getProblem().getSlug()
         );
+    }
+
+    private static String privateTo(Document document) {
+        return document.isPrivateAt(Instant.now()) ? document.getOwnerUsername() : null;
     }
 
     @Transactional(readOnly = true)
@@ -177,8 +191,11 @@ public class DocumentService {
 
         roomService.checkRoomAccess(roomId, username);
 
+        Instant now = Instant.now();
+        // Other players' match files are left out entirely, not just emptied
         return documentRepository.findByRoomIdOrderByFileNameAsc(roomId)
                 .stream()
+                .filter(doc -> doc.isVisibleTo(username, now))
                 .map(DocumentService::toResponse)
                 .toList();
     }
@@ -212,7 +229,7 @@ public class DocumentService {
         TextOperation change = TextOperation.between(document.getContent(), target);
 
         if (change.isNoop()) {
-            return new AppliedOperation(document.getId(), document.getRevision(), change);
+            return new AppliedOperation(document.getId(), document.getRevision(), change, privateTo(document));
         }
 
         log.info("{} restored {} to revision {}", username, document.getFileName(), revision);
@@ -221,12 +238,14 @@ public class DocumentService {
 
     private Document lockDocument(UUID roomId, UUID documentId, String username) {
         roomService.checkRoomAccess(roomId, username);
-        return findDocumentForUpdate(roomId, documentId);
+        return findDocumentForUpdate(roomId, documentId, username);
     }
 
-    private Document findDocumentForUpdate(UUID roomId, UUID documentId) {
+    // Someone else's private file answers exactly like a missing one, so its existence stays hidden
+    private Document findDocumentForUpdate(UUID roomId, UUID documentId, String username) {
         return documentRepository
                 .findByIdAndRoomIdForUpdate(documentId, roomId)
+                .filter(doc -> doc.isVisibleTo(username, Instant.now()))
                 .orElseThrow(() ->
                         new DocumentNotFoundException("Document not found in this room")
                 );
@@ -287,6 +306,6 @@ public class DocumentService {
                     username, document.getFileName(), missed.size(), baseRevision, document.getRevision());
         }
 
-        return new AppliedOperation(document.getId(), document.getRevision(), rebased);
+        return new AppliedOperation(document.getId(), document.getRevision(), rebased, privateTo(document));
     }
 }

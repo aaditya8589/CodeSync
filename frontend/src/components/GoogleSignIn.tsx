@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { getGoogleClientId, loadGoogleIdentity, signInWithGoogle } from "../auth/google"
+import { afterLoginPath } from "../auth/session"
 
 // Google draws its own button (its branding rules require that), into the div below
 function GoogleSignIn({ text }: { text: "signin_with" | "signup_with" }) {
@@ -38,7 +39,7 @@ function GoogleSignIn({ text }: { text: "signin_with" | "signup_with" }) {
             setError("")
             try {
               localStorage.setItem("token", await signInWithGoogle(credential))
-              navigate("/dashboard")
+              navigate(afterLoginPath())
             } catch (reason) {
               setError(reason instanceof Error ? reason.message : "Google sign-in failed")
             } finally {

@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../config"
+import { authorizedFetch } from "./http"
 
 export interface RoomDocument {
   id: string
@@ -6,6 +7,10 @@ export interface RoomDocument {
   content: string
   updatedAt: string
   revision: number
+  // Match files only: the player it belongs to, until when only they can see it, and its problem
+  owner?: string | null
+  privateUntil?: string | null
+  problemSlug?: string | null
 }
 
 export async function getDocuments(roomId: string): Promise<RoomDocument[]> {
@@ -15,7 +20,7 @@ export async function getDocuments(roomId: string): Promise<RoomDocument[]> {
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_BASE_URL}/api/rooms/${roomId}/documents`,
     {
       headers: {
@@ -38,7 +43,7 @@ export async function createDocument(roomId: string, fileName: string): Promise<
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/documents`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/rooms/${roomId}/documents`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -61,7 +66,7 @@ export async function renameDocument(roomId: string, documentId: string, fileNam
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/documents/${documentId}`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/rooms/${roomId}/documents/${documentId}`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -84,7 +89,7 @@ export async function deleteDocument(roomId: string, documentId: string): Promis
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/documents/${documentId}`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/rooms/${roomId}/documents/${documentId}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   })

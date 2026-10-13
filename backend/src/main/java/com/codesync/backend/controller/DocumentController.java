@@ -7,7 +7,6 @@ import com.codesync.backend.dto.RenameDocumentRequest;
 import com.codesync.backend.service.DocumentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,11 +18,11 @@ import java.util.UUID;
 public class DocumentController {
 
     private final DocumentService documentService;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final RoomBroadcaster broadcaster;
 
-    public DocumentController(DocumentService documentService, SimpMessagingTemplate messagingTemplate) {
+    public DocumentController(DocumentService documentService, RoomBroadcaster broadcaster) {
         this.documentService = documentService;
-        this.messagingTemplate = messagingTemplate;
+        this.broadcaster = broadcaster;
     }
 
     @PostMapping
@@ -54,8 +53,9 @@ public class DocumentController {
 
         DocumentResponse document = renamed.document();
         if (!document.getFileName().equals(renamed.previousName())) {
-            broadcast(roomId, new FileChangeMessage(FileChangeMessage.Type.RENAMED,
-                    documentId.toString(), document.getFileName(), renamed.previousName(), authentication.getName()));
+            broadcaster.fileChange(roomId, new FileChangeMessage(FileChangeMessage.Type.RENAMED,
+                    documentId.toString(), document.getFileName(), renamed.previousName(), authentication.getName()),
+                    renamed.privateTo());
         }
         return ResponseEntity.ok(document);
     }
@@ -72,8 +72,9 @@ public class DocumentController {
         return ResponseEntity.noContent().build();
     }
 
+    // Created files are always shared, and private ones cannot be deleted
     private void broadcast(UUID roomId, FileChangeMessage message) {
-        messagingTemplate.convertAndSend("/topic/rooms/" + roomId + "/files", message);
+        broadcaster.fileChange(roomId, message, null);
     }
 
     @GetMapping

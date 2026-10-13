@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link, Navigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 import DifficultyTag from "../arena/DifficultyTag"
 import TopBar from "../components/TopBar"
 import { listProblems, type ProblemSummary } from "../services/arenaService"
@@ -14,7 +14,6 @@ function Problems() {
       .catch(() => setError("Couldn't load the problems. Check that the backend is running, then reload."))
   }, [])
 
-  if (!localStorage.getItem("token")) return <Navigate to="/login" replace />
 
   const solved = problems?.filter((problem) => problem.solved).length ?? 0
 
