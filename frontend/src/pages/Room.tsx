@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, Navigate, useParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 
 import {
   getRoom,
@@ -403,10 +403,6 @@ function Room() {
       // Clipboard blocked (e.g. plain http): show the ID so it can be copied by hand
       window.prompt("Room ID", roomId)
     }
-  }
-
-  if (!localStorage.getItem("token")) {
-    return <Navigate to="/login" replace />
   }
 
   if (loading) {

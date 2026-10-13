@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../config"
+import { authorizedFetch } from "./http"
 
 export interface MatchProblem {
   letter: string
@@ -42,7 +43,7 @@ export interface MatchChangedMessage {
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
   const token = localStorage.getItem("token")
   if (!token) throw new Error("No authentication token found")
-  const response = await fetch(`${API_BASE_URL}/api/rooms/${path}`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/rooms/${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init.headers },
   })

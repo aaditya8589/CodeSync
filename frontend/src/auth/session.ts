@@ -1,16 +1,54 @@
-// The login token is a JWT; its payload names the user. Reading it here is only for
-// display: the server checks the signature on every request.
-export function currentUsername(): string | null {
+// The login token is a JWT; its payload names the user and when the login expires. Reading it
+// here is only for display and to skip requests that would fail anyway: the server checks the
+// signature and expiry on every request.
+function payload(): { sub?: string; exp?: number } | null {
   const token = localStorage.getItem("token")
   if (!token) return null
   try {
-    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")
-    return JSON.parse(atob(payload)).sub ?? null
+    return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))
   } catch {
     return null
   }
 }
 
+export function currentUsername(): string | null {
+  return payload()?.sub ?? null
+}
+
+/** A token that has not expired yet. A malformed one counts as none. */
+export function hasSession(): boolean {
+  const claims = payload()
+  return Boolean(claims?.sub) && (claims?.exp === undefined || claims.exp * 1000 > Date.now())
+}
+
 export function signOut(): void {
   localStorage.removeItem("token")
+}
+
+/** The login page, remembering where to come back to. */
+export function loginPath(expired = false): string {
+  const here = window.location.pathname + window.location.search
+  const params = new URLSearchParams()
+  if (expired) params.set("expired", "1")
+  if (here !== "/" && !here.startsWith("/login") && !here.startsWith("/register")) params.set("next", here)
+  const query = params.toString()
+  return query ? `/login?${query}` : "/login"
+}
+
+let leaving = false
+
+/** The server said the login is no longer valid: start again from the login page. */
+export function endExpiredSession(): void {
+  signOut()
+  // Several requests can fail at once; and on the login page itself there is nowhere to go
+  if (leaving || window.location.pathname.startsWith("/login")) return
+  leaving = true
+  window.location.assign(loginPath(true))
+}
+
+/** Where to go after signing in: back to the page that needed it, or the dashboard. */
+export function afterLoginPath(): string {
+  const next = new URLSearchParams(window.location.search).get("next")
+  // Only paths on this site: "//evil.example" or "https://..." would send the user elsewhere
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard"
 }

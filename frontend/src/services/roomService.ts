@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../config"
+import { authorizedFetch } from "./http"
 
 export interface Room {
   id: string
@@ -16,7 +17,7 @@ export async function getMyRooms(): Promise<Room[]> {
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_BASE_URL}/api/rooms`,
     {
       method: "GET",
@@ -39,7 +40,7 @@ export async function createRoom(name: string): Promise<Room> {
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_BASE_URL}/api/rooms`,
     {
       method: "POST",
@@ -70,7 +71,7 @@ export async function joinRoom(roomId: string): Promise<void> {
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_BASE_URL}/api/rooms/${roomId}/join`,
     {
       method: "POST",
@@ -96,7 +97,7 @@ export async function getRoom(roomId: string): Promise<Room> {
     throw new Error("No authentication token found")
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_BASE_URL}/api/rooms/${roomId}`,
     {
       method: "GET",

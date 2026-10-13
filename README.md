@@ -145,7 +145,7 @@ All secrets and environment-specific values come from environment variables, so 
 | `DB_URL` | no | `jdbc:postgresql://localhost:5432/codesync` | Database location |
 | `DB_USERNAME` | no | `postgres` | Database user |
 | `CORS_ALLOWED_ORIGINS` | no | `http://localhost:5173` | Comma-separated frontend URLs allowed to call the API and open WebSockets |
-| `JWT_EXPIRATION_MINUTES` | no | `60` | How long a login lasts |
+| `JWT_EXPIRATION_MINUTES` | no | `480` | How long a login lasts (8 hours, longer than any match). After that the app asks you to sign in again and takes you back to where you were. |
 | `CODESYNC_IMAGE_CPP`, `CODESYNC_IMAGE_PYTHON`, `CODESYNC_IMAGE_JAVA` | no | `gcc:14`, `python:3.13-slim`, `eclipse-temurin:21-jdk` | Image used to run each language |
 | `SHOW_SQL` | no | `false` | Log every SQL query |
 | `GOOGLE_CLIENT_ID` | no | (off) | OAuth client id for "Sign in with Google"; without it the button is hidden. See below. |

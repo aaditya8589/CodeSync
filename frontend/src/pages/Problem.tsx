@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 import DifficultyTag from "../arena/DifficultyTag"
 import ProblemStatement from "../arena/ProblemStatement"
 import TopBar from "../components/TopBar"
@@ -36,7 +36,6 @@ function Problem() {
       .catch((reason: Error) => setError(reason.message))
   }, [slug])
 
-  if (!localStorage.getItem("token")) return <Navigate to="/login" replace />
 
   const openIn = async (target: string) => {
     setBusy(true)

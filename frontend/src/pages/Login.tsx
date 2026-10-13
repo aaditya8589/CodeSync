@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom"
 import AuthLayout from "../components/AuthLayout"
 import GoogleSignIn from "../components/GoogleSignIn"
 import { login } from "../services/authService"
+import { afterLoginPath } from "../auth/session"
 
 function Login() {
   const [email, setEmail] = useState("")
@@ -20,7 +21,7 @@ function Login() {
     try {
       const data = await login(email, password)
       localStorage.setItem("token", data.token)
-      navigate("/dashboard")
+      navigate(afterLoginPath())
     } catch (reason) {
       // A network failure is not a wrong password, so say which one it was
       setError(
@@ -39,6 +40,9 @@ function Login() {
     <AuthLayout>
       <form className="auth__form" onSubmit={handleSubmit}>
         <h2>Sign in</h2>
+        {new URLSearchParams(window.location.search).has("expired") && (
+          <p className="message" role="status">Your session expired. Sign in again to carry on where you were.</p>
+        )}
 
         <div className="field">
           <label htmlFor="email">Email</label>
