@@ -1,11 +1,16 @@
 package com.codesync.backend.match;
 
+import com.codesync.backend.dto.match.MatchCreatedResponse;
+import com.codesync.backend.dto.match.MatchEntryResponse;
 import com.codesync.backend.dto.match.MatchResponse;
+import com.codesync.backend.dto.match.MatchSummary;
 import com.codesync.backend.entity.Document;
 import com.codesync.backend.entity.Match;
 import com.codesync.backend.entity.MatchPlayer;
 import com.codesync.backend.entity.Problem;
 import com.codesync.backend.entity.Room;
+import com.codesync.backend.entity.RoomMember;
+import com.codesync.backend.entity.User;
 import com.codesync.backend.exception.InvalidRunRequestException;
 import com.codesync.backend.exception.MatchConflictException;
 import com.codesync.backend.exception.ProblemNotFoundException;
@@ -14,26 +19,28 @@ import com.codesync.backend.repository.DocumentRepository;
 import com.codesync.backend.repository.MatchPlayerRepository;
 import com.codesync.backend.repository.MatchRepository;
 import com.codesync.backend.repository.ProblemRepository;
+import com.codesync.backend.repository.RoomMemberRepository;
 import com.codesync.backend.repository.RoomRepository;
 import com.codesync.backend.repository.SubmissionRepository;
+import com.codesync.backend.repository.UserRepository;
 import com.codesync.backend.service.RoomService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Starting, joining and ending matches. Every change takes the room's row lock first, so two
- * people pressing Start at once get one match, and file names created on join cannot clash.
+ * Matches live in their own match rooms. The host creates one (a lobby), shares its link, lets
+ * people in one by one, and starts the clock for everyone at once. Every change takes the match
+ * room's row lock first, so two requests at the same moment (two Starts, an approval during the
+ * start) are applied one after the other.
  */
 @Service
 public class MatchService {
@@ -46,6 +53,8 @@ public class MatchService {
 
     private final RoomService roomService;
     private final RoomRepository roomRepository;
+    private final RoomMemberRepository memberRepository;
+    private final UserRepository userRepository;
     private final MatchRepository matchRepository;
     private final MatchPlayerRepository playerRepository;
     private final ProblemRepository problemRepository;
@@ -55,6 +64,8 @@ public class MatchService {
     public MatchService(
             RoomService roomService,
             RoomRepository roomRepository,
+            RoomMemberRepository memberRepository,
+            UserRepository userRepository,
             MatchRepository matchRepository,
             MatchPlayerRepository playerRepository,
             ProblemRepository problemRepository,
@@ -63,6 +74,8 @@ public class MatchService {
     ) {
         this.roomService = roomService;
         this.roomRepository = roomRepository;
+        this.memberRepository = memberRepository;
+        this.userRepository = userRepository;
         this.matchRepository = matchRepository;
         this.playerRepository = playerRepository;
         this.problemRepository = problemRepository;
@@ -70,12 +83,13 @@ public class MatchService {
         this.submissionRepository = submissionRepository;
     }
 
+    /** Creates a match room in the lobby, with its creator as host and first player. */
     @Transactional
-    public MatchResponse start(UUID roomId, List<String> problemSlugs, Integer durationMinutes, String username) {
-        roomService.checkRoomAccess(roomId, username);
-        Room room = lockRoom(roomId);
-        Instant now = now();
-
+    public MatchCreatedResponse create(List<String> problemSlugs, Integer durationMinutes, UUID fromRoomId,
+                                       String username) {
+        if (fromRoomId != null) {
+            roomService.checkRoomAccess(fromRoomId, username);
+        }
         List<String> slugs = problemSlugs == null ? List.of() : new ArrayList<>(new LinkedHashSet<>(problemSlugs));
         if (slugs.isEmpty() || slugs.size() > MAX_PROBLEMS) {
             throw new InvalidRunRequestException("Pick between 1 and " + MAX_PROBLEMS + " different problems");
@@ -84,87 +98,173 @@ public class MatchService {
             throw new InvalidRunRequestException(
                     "A match lasts between " + MIN_MINUTES + " and " + MAX_MINUTES + " minutes");
         }
-        Optional<Match> latest = matchRepository.findFirstByRoomIdOrderByStartedAtDesc(roomId);
-        if (latest.isPresent() && latest.get().isRunningAt(now)) {
-            throw new MatchConflictException("A match is already running in this room");
-        }
-
         List<Problem> problems = slugs.stream()
                 .map(slug -> problemRepository.findBySlug(slug)
                         .orElseThrow(() -> new ProblemNotFoundException("No problem called " + slug)))
                 .toList();
 
-        Match match = matchRepository.save(new Match(
-                room, username, now, now.plus(Duration.ofMinutes(durationMinutes)), problems));
-        addPlayer(match, room, username, now);
+        User host = user(username);
+        String title = title(problems);
+        Room room = roomRepository.save(Room.forMatch(title, host));
+        memberRepository.save(new RoomMember(room, host, "OWNER"));
 
-        log.info("{} started a {}-minute match in room {} with {}", username, durationMinutes, roomId, slugs);
+        Instant now = now();
+        Match match = matchRepository.save(new Match(room, username, durationMinutes, problems, fromRoomId, now));
+        playerRepository.save(new MatchPlayer(match, username, now, MatchPlayer.Status.APPROVED));
+
+        log.info("{} created match room {} ({} min, {})", username, room.getId(), durationMinutes, slugs);
+        return new MatchCreatedResponse(room.getId().toString(), title);
+    }
+
+    /** What anyone signed in sees when they open a match link, before being let in. */
+    @Transactional(readOnly = true)
+    public MatchEntryResponse entry(UUID roomId, String username) {
+        Match match = matchOf(roomId);
+        return entryView(match, username, now());
+    }
+
+    /** Asks the host to be let in. Asking again changes nothing; a declined request stays declined. */
+    @Transactional
+    public MatchEntryResponse requestToJoin(UUID roomId, String username) {
+        user(username);
+        lockRoom(roomId);
+        Match match = matchOf(roomId);
+        Instant now = now();
+        if (match.stateAt(now) == Match.State.ENDED) {
+            throw new MatchConflictException("This match is over");
+        }
+        if (playerRepository.findByMatchIdAndUsername(match.getId(), username).isEmpty()) {
+            playerRepository.save(new MatchPlayer(match, username, now, MatchPlayer.Status.PENDING));
+            log.info("{} asked to join match room {}", username, roomId);
+        }
+        return entryView(match, username, now);
+    }
+
+    @Transactional
+    public MatchResponse approve(UUID roomId, String player, String username) {
+        Match match = hostAction(roomId, username);
+        Instant now = now();
+        if (match.stateAt(now) == Match.State.ENDED) {
+            throw new MatchConflictException("This match is over");
+        }
+        MatchPlayer request = playerRepository.findByMatchIdAndUsername(match.getId(), player)
+                .orElseThrow(() -> new MatchConflictException(player + " has not asked to join"));
+        if (request.getStatus() != MatchPlayer.Status.APPROVED) {
+            request.setStatus(MatchPlayer.Status.APPROVED);
+            User user = user(player);
+            if (!memberRepository.existsByRoomIdAndUserId(roomId, user.getId())) {
+                memberRepository.save(new RoomMember(match.getRoom(), user, "MEMBER"));
+            }
+            // Let in after the start: their files are made now; their time still counts from the start
+            if (match.isRunningAt(now)) {
+                createFiles(match, player);
+            }
+            log.info("{} let {} into match room {}", username, player, roomId);
+        }
         return view(match, username, now);
     }
 
-    /** Gives the player their own private file for each problem. Joining twice changes nothing. */
     @Transactional
-    public MatchResponse join(UUID roomId, String username) {
-        roomService.checkRoomAccess(roomId, username);
-        Room room = lockRoom(roomId);
-        Instant now = now();
-
-        Match match = matchRepository.findFirstByRoomIdOrderByStartedAtDesc(roomId)
-                .filter(found -> found.isRunningAt(now))
-                .orElseThrow(() -> new MatchConflictException("No match is running in this room"));
-
-        if (!playerRepository.existsByMatchIdAndUsername(match.getId(), username)) {
-            addPlayer(match, room, username, now);
-            log.info("{} joined the match in room {}", username, roomId);
+    public MatchResponse decline(UUID roomId, String player, String username) {
+        Match match = hostAction(roomId, username);
+        MatchPlayer request = playerRepository.findByMatchIdAndUsername(match.getId(), player)
+                .orElseThrow(() -> new MatchConflictException(player + " has not asked to join"));
+        if (request.getStatus() == MatchPlayer.Status.APPROVED) {
+            throw new MatchConflictException(player + " is already playing");
         }
+        request.setStatus(MatchPlayer.Status.DECLINED);
+        return view(match, username, now());
+    }
+
+    /** Starts everyone's clock at once and gives every player their private files. */
+    @Transactional
+    public MatchResponse start(UUID roomId, String username) {
+        Match match = hostAction(roomId, username);
+        Instant now = now();
+        if (match.stateAt(now) != Match.State.LOBBY) {
+            throw new MatchConflictException("The match has already started");
+        }
+        match.start(now);
+        for (String player : approvedPlayers(match)) {
+            createFiles(match, player);
+        }
+        log.info("{} started match room {}", username, roomId);
         return view(match, username, now);
     }
 
     @Transactional
     public MatchResponse end(UUID roomId, String username) {
-        roomService.checkRoomAccess(roomId, username);
-        lockRoom(roomId);
+        Match match = hostAction(roomId, username);
         Instant now = now();
-
-        Match match = matchRepository.findFirstByRoomIdOrderByStartedAtDesc(roomId)
-                .filter(found -> found.isRunningAt(now))
-                .orElseThrow(() -> new MatchConflictException("No match is running in this room"));
-        if (!match.getHostUsername().equals(username)) {
-            throw new MatchConflictException("Only " + match.getHostUsername() + " can end the match early");
+        if (!match.isRunningAt(now)) {
+            throw new MatchConflictException("The match is not running");
         }
-
         match.endAt(now);
         UUID matchId = match.getId();
         documentRepository.revealMatchFiles(matchId, now);
-        log.info("{} ended the match in room {} early", username, roomId);
+        log.info("{} ended match room {} early", username, roomId);
         return view(matchRepository.findById(matchId).orElseThrow(), username, now);
     }
 
-    /** The current match, or the last one with its final standings; empty if the room never had one. */
+    /** The match of a match room, for its members. */
     @Transactional(readOnly = true)
-    public Optional<MatchResponse> current(UUID roomId, String username) {
+    public MatchResponse current(UUID roomId, String username) {
         roomService.checkRoomAccess(roomId, username);
-        Instant now = now();
-        return matchRepository.findFirstByRoomIdOrderByStartedAtDesc(roomId)
-                .map(match -> view(match, username, now));
+        return view(matchOf(roomId), username, now());
     }
 
-    private void addPlayer(Match match, Room room, String username, Instant now) {
-        playerRepository.save(new MatchPlayer(match, username, now));
+    /** Match rooms made from an ordinary room, so its members can find their links. */
+    @Transactional(readOnly = true)
+    public List<MatchSummary> madeFrom(UUID roomId, String username) {
+        roomService.checkRoomAccess(roomId, username);
+        Instant now = now();
+        return matchRepository.findTop5ByOriginRoomIdOrderByCreatedAtDesc(roomId).stream()
+                .map(match -> new MatchSummary(match.getRoom().getId().toString(), match.getRoom().getName(),
+                        match.getHostUsername(), match.stateAt(now).name()))
+                .toList();
+    }
 
+    private Match hostAction(UUID roomId, String username) {
+        roomService.checkRoomAccess(roomId, username);
+        lockRoom(roomId);
+        Match match = matchOf(roomId);
+        if (!match.getHostUsername().equals(username)) {
+            throw new MatchConflictException("Only the host, " + match.getHostUsername() + ", can do that");
+        }
+        return match;
+    }
+
+    private Match matchOf(UUID roomId) {
+        return matchRepository.findFirstByRoomId(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("No match here"));
+    }
+
+    private List<String> approvedPlayers(Match match) {
+        return playerRepository.findByMatchIdOrderByJoinedAtAsc(match.getId()).stream()
+                .filter(player -> player.getStatus() == MatchPlayer.Status.APPROVED)
+                .map(MatchPlayer::getUsername)
+                .toList();
+    }
+
+    private void createFiles(Match match, String username) {
         List<Problem> problems = match.getProblems();
         for (int i = 0; i < problems.size(); i++) {
             Problem problem = problems.get(i);
             String letter = Match.letter(i);
             documentRepository.save(Document.forMatchPlayer(
-                    room,
-                    freeFileName(room.getId(), letter + "-" + fileSafe(username)),
+                    match.getRoom(),
+                    freeFileName(match.getRoom().getId(), letter + "-" + fileSafe(username)),
                     starterCode(letter, problem.getTitle()),
                     username,
                     match,
                     problem
             ));
         }
+    }
+
+    private static String title(List<Problem> problems) {
+        String title = "Match: " + String.join(", ", problems.stream().map(Problem::getTitle).toList());
+        return title.length() > 100 ? title.substring(0, 97) + "..." : title;
     }
 
     // Usernames may contain characters file names may not; the owner is stored separately anyway
@@ -204,9 +304,23 @@ public class MatchService {
         return Instant.now().truncatedTo(ChronoUnit.MILLIS);
     }
 
+    private User user(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    }
+
     private Room lockRoom(UUID roomId) {
         return roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found"));
+    }
+
+    private MatchEntryResponse entryView(Match match, String username, Instant now) {
+        String status = playerRepository.findByMatchIdAndUsername(match.getId(), username)
+                .map(player -> player.getStatus().name())
+                .orElse("NONE");
+        return new MatchEntryResponse(match.getRoom().getId().toString(), match.getRoom().getName(),
+                match.getHostUsername(), match.stateAt(now).name(), match.getProblems().size(),
+                match.getDurationMinutes(), status);
     }
 
     private MatchResponse view(Match match, String username, Instant now) {
@@ -218,25 +332,35 @@ public class MatchService {
                     Match.letter(i), problem.getSlug(), problem.getTitle(), problem.getDifficulty()));
         }
 
-        List<String> players = playerRepository.findByMatchIdOrderByJoinedAtAsc(match.getId())
-                .stream().map(MatchPlayer::getUsername).toList();
+        List<MatchPlayer> everyone = playerRepository.findByMatchIdOrderByJoinedAtAsc(match.getId());
+        List<String> players = everyone.stream()
+                .filter(player -> player.getStatus() == MatchPlayer.Status.APPROVED)
+                .map(MatchPlayer::getUsername).toList();
+        // Who is waiting is the host's business
+        List<String> requests = !match.getHostUsername().equals(username) ? List.of() : everyone.stream()
+                .filter(player -> player.getStatus() == MatchPlayer.Status.PENDING)
+                .map(MatchPlayer::getUsername).toList();
         List<Scoreboard.Attempt> attempts = submissionRepository.findByMatchIdOrderByCreatedAtAsc(match.getId())
                 .stream()
                 .map(submission -> new Scoreboard.Attempt(submission.getUsername(),
                         submission.getProblem().getSlug(), submission.getVerdict(), submission.getCreatedAt()))
                 .toList();
 
+        Match.State state = match.stateAt(now);
         return new MatchResponse(
                 match.getId().toString(),
                 match.getHostUsername(),
+                state.name(),
+                match.getDurationMinutes(),
                 match.getStartedAt(),
                 match.getEndsAt(),
                 now,
-                match.isRunningAt(now),
+                state == Match.State.RUNNING,
                 players.contains(username),
                 listed,
-                Scoreboard.compute(listed.stream().map(MatchResponse.MatchProblem::slug).toList(),
-                        players, attempts, match.getStartedAt())
+                Scoreboard.compute(listed.stream().map(MatchResponse.MatchProblem::slug).toList(), players, attempts,
+                        match.getStartedAt() == null ? now : match.getStartedAt()),
+                requests
         );
     }
 }

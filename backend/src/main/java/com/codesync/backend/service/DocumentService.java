@@ -66,6 +66,9 @@ public class DocumentService {
     public DocumentResponse createDocument(UUID roomId, String fileName, String username) {
         roomService.checkRoomAccess(roomId, username);
         Room room = lockRoom(roomId);
+        if (room.isMatchRoom()) {
+            throw new MatchConflictException("A match room only has each player's own files");
+        }
 
         String name = validName(fileName);
         if (documentRepository.countByRoomIdAndMatchIsNull(roomId) >= FileTemplates.MAX_FILES_PER_ROOM) {
@@ -132,9 +135,12 @@ public class DocumentService {
     @Transactional
     public String deleteDocument(UUID roomId, UUID documentId, String username) {
         roomService.checkRoomAccess(roomId, username);
-        lockRoom(roomId);
+        Room room = lockRoom(roomId);
         Document document = findDocumentForUpdate(roomId, documentId, username);
 
+        if (room.isMatchRoom()) {
+            throw new MatchConflictException("Files in a match room can't be deleted");
+        }
         if (document.isPrivateAt(Instant.now())) {
             throw new MatchConflictException("Match files can't be deleted until the match ends");
         }

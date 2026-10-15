@@ -10,6 +10,8 @@ public class RoomResponse {
     private UUID ownerId;
     private Instant createdAt;
     private String problemSlug;
+    // NORMAL or MATCH
+    private String kind = "NORMAL";
 
     public RoomResponse(
             UUID id,
@@ -32,6 +34,15 @@ public class RoomResponse {
         this.ownerId = ownerId;
         this.createdAt = createdAt;
         this.problemSlug = problemSlug;
+    }
+
+    public RoomResponse withKind(String kind) {
+        this.kind = kind;
+        return this;
+    }
+
+    public String getKind() {
+        return kind;
     }
 
     public UUID getId() {

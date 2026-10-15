@@ -3,9 +3,10 @@ import { formatClock } from "./clock"
 import { useCountdown } from "./useCountdown"
 
 // The countdown lives here so only this button re-renders every quarter second, not the room
-function MatchButton({ match, offset, pressed, onClick }: {
+function MatchButton({ match, offset, label, pressed, onClick }: {
   match: Match | null
   offset: number
+  label: string
   pressed: boolean
   onClick: () => void
 }) {
@@ -19,7 +20,7 @@ function MatchButton({ match, offset, pressed, onClick }: {
       onClick={onClick}
       title={live ? "Time left in the match" : "Compete against the room"}
     >
-      {live ? <>Match <span className="match-clock">{formatClock(left)}</span></> : "Compete"}
+      {live ? <>Match <span className="match-clock">{formatClock(left)}</span></> : label}
     </button>
   )
 }

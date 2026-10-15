@@ -1,23 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { afterLoginPath, currentUsername, endExpiredSession, hasSession, loginPath } from "./session"
+import { afterLoginPath, currentUsername, endExpiredSession, followLoginChangesInOtherTabs, hasSession, loginPath } from "./session"
 
 // Tests run without a browser, so storage and the address bar are small stand-ins
 let stored: Record<string, string> = {}
-const location = { pathname: "/", search: "", assign: vi.fn() }
+let listeners: Record<string, (event: { key: string | null }) => void> = {}
+const location = { pathname: "/", search: "", assign: vi.fn(), reload: vi.fn() }
 
 const token = (claims: object) => `x.${btoa(JSON.stringify(claims))}.sig`
 const at = (path: string, search = "") => { location.pathname = path; location.search = search }
 
 beforeEach(() => {
   stored = {}
+  listeners = {}
   location.assign = vi.fn()
+  location.reload = vi.fn()
   at("/")
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => stored[key] ?? null,
     setItem: (key: string, value: string) => { stored[key] = value },
     removeItem: (key: string) => { delete stored[key] },
   })
-  vi.stubGlobal("window", { location })
+  vi.stubGlobal("window", {
+    location,
+    addEventListener: (type: string, handler: (event: { key: string | null }) => void) => { listeners[type] = handler },
+    removeEventListener: (type: string) => { delete listeners[type] },
+  })
 })
 afterEach(() => vi.unstubAllGlobals())
 
@@ -61,5 +68,17 @@ describe("session", () => {
     endExpiredSession()
     expect(stored.token).toBeUndefined()
     expect(location.assign).toHaveBeenCalledWith("/login?expired=1&next=%2Frooms%2Fabc")
+  })
+
+  it("a login change in another tab reloads this one", () => {
+    const stop = followLoginChangesInOtherTabs()
+    listeners.storage({ key: "something-else" })
+    expect(location.reload).not.toHaveBeenCalled()
+    listeners.storage({ key: "token" })
+    expect(location.reload).toHaveBeenCalledTimes(1)
+    listeners.storage({ key: null })
+    expect(location.reload).toHaveBeenCalledTimes(2)
+    stop()
+    expect(listeners.storage).toBeUndefined()
   })
 })

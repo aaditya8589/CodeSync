@@ -15,6 +15,8 @@ interface FileExplorerProps {
   onCreate: (fileName: string) => Promise<void>
   onRename: (documentId: string, fileName: string) => Promise<void>
   onDelete: (documentId: string) => Promise<void>
+  canCreate?: boolean
+  canDelete?: boolean
 }
 
 type Mode =
@@ -54,7 +56,7 @@ function LockIcon() {
   )
 }
 
-function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete }: FileExplorerProps) {
+function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete, canCreate = true, canDelete: deletingAllowed = true }: FileExplorerProps) {
   const [newName, setNewName] = useState("")
   const [chosenMode, setMode] = useState<Mode>({ kind: "idle" })
   const [busy, setBusy] = useState(false)
@@ -68,7 +70,7 @@ function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete 
     ? chosenMode
     : { kind: "idle" }
 
-  const canDelete = files.length > 1
+  const canDelete = deletingAllowed && files.length > 1
   const nameOf = (id: string) => files.find((file) => file.id === id)?.name ?? ""
 
   const run = async (action: () => Promise<void>, fallback: string): Promise<boolean> => {
@@ -222,7 +224,7 @@ function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete 
                 >
                   <PencilIcon />
                 </button>
-                <button
+                {deletingAllowed && <button
                   type="button"
                   className="icon-button icon-button--danger"
                   aria-label={`Delete ${file.name}`}
@@ -234,7 +236,7 @@ function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete 
                   }}
                 >
                   <TrashIcon />
-                </button>
+                </button>}
               </span>
             </li>
           )
@@ -243,7 +245,7 @@ function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete 
 
       {error && mode.kind !== "idle" && <p className="message message--error" role="alert">{error}</p>}
 
-      <form className="files__add" onSubmit={(event) => void handleCreate(event)}>
+      {canCreate && <form className="files__add" onSubmit={(event) => void handleCreate(event)}>
         <input
           className="input"
           aria-label="New file name"
@@ -257,7 +259,7 @@ function FileExplorer({ files, activeId, onSelect, onCreate, onRename, onDelete 
           {busy && mode.kind === "idle" ? "Adding..." : "Add file"}
         </button>
         {error && mode.kind === "idle" && <p className="message message--error" role="alert">{error}</p>}
-      </form>
+      </form>}
     </aside>
   )
 }
