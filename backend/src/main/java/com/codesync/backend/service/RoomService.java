@@ -119,6 +119,12 @@ public class RoomService {
                         new IllegalArgumentException("Room not found")
                 );
 
+        // A match room is entered through its link, and only when the host lets you in
+        if (room.isMatchRoom()) {
+            throw new RoomAccessDeniedException(
+                    "This is a match room: open its link and ask the host to let you in");
+        }
+
         if (roomMemberRepository.existsByRoomIdAndUserId(
                 roomId,
                 user.getId()
@@ -150,7 +156,7 @@ public class RoomService {
                         member.getRoom().getName(),
                         member.getRoom().getOwner().getId(),
                         member.getRoom().getCreatedAt()
-                ))
+                ).withKind(member.getRoom().getKind().name()))
                 .toList();
     }
 
@@ -196,6 +202,6 @@ public class RoomService {
                 room.getOwner().getId(),
                 room.getCreatedAt(),
                 room.getProblem() == null ? null : room.getProblem().getSlug()
-        );
+        ).withKind(room.getKind().name());
     }
 }

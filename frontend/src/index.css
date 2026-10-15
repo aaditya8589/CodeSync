@@ -771,3 +771,28 @@ select.input { appearance: auto; padding-right: 6px; }
 .standings__cell--solved { color: var(--ok); font-weight: 600; }
 .standings__cell--solved small { color: var(--muted); font-weight: 400; }
 .standings__cell--tried { color: var(--err); }
+
+/* Match rooms */
+.narrow-page { max-width: 640px; margin: 0 auto; padding: 32px 20px 48px; }
+.narrow-page .match-start { gap: 16px; }
+.match-entry h1 { font-size: 22px; margin: 0; }
+.match-entry__waiting { color: var(--signal); }
+.room-list__tag {
+  display: inline-block; margin-right: 8px; padding: 2px 6px; border-radius: var(--radius-s);
+  background: var(--raised); color: var(--signal); font: 600 11px/1.4 var(--ui); vertical-align: 1px;
+}
+.match__share { display: grid; gap: 6px; margin-bottom: 18px; }
+.match__share label { font-size: 13px; color: var(--muted); }
+.match__share .input { height: 32px; font: 400 12.5px/1 var(--code); }
+.match__requests { margin-bottom: 18px; padding: 10px 12px; border: 1px solid var(--signal); border-radius: var(--radius-m); }
+.match__requests h3, .match__lobby h3, .match__made h3 { font-size: 14px; margin: 0 0 8px; }
+.match__requests ul, .match__players, .match__made ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.match__requests li { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.match__requests li span { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.match__requests .button { height: 28px; padding: 0 10px; font-size: 13px; }
+.match__lobby { display: grid; gap: 12px; }
+.match__players li { padding: 6px 8px; border-radius: var(--radius-s); background: var(--editor); font-size: 14px; }
+.match__end-head { height: 28px; padding: 0 10px; font-size: 13px; }
+.match__made { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.match__made li { font-size: 14px; }
+.editor-host__empty { position: absolute; inset: 0; z-index: 5; margin: 0; min-height: 0; background: var(--editor); padding: 24px; text-align: center; }

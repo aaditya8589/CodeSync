@@ -28,6 +28,14 @@ public class Room {
     @JoinColumn(name = "problem_id")
     private Problem problem;
 
+    // MATCH rooms exist for one contest: only the players' own files, joined through the host.
+    // Null for every room made before match rooms existed, which are all ordinary rooms.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private Kind kind;
+
+    public enum Kind { NORMAL, MATCH }
+
     public Room() {
     }
 
@@ -35,6 +43,21 @@ public class Room {
         this.name = name;
         this.owner = owner;
         this.createdAt = Instant.now();
+        this.kind = Kind.NORMAL;
+    }
+
+    public static Room forMatch(String name, User owner) {
+        Room room = new Room(name, owner);
+        room.kind = Kind.MATCH;
+        return room;
+    }
+
+    public boolean isMatchRoom() {
+        return kind == Kind.MATCH;
+    }
+
+    public Kind getKind() {
+        return kind == null ? Kind.NORMAL : kind;
     }
 
     public UUID getId() {

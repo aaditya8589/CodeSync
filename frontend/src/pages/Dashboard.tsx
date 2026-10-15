@@ -44,7 +44,10 @@ function Dashboard() {
                 .map((room) => (
                   <li key={room.id}>
                     <Link to={`/rooms/${room.id}`}>
-                      <span className="room-list__name">{room.name}</span>
+                      <span className="room-list__name">
+                        {room.kind === "MATCH" && <span className="room-list__tag">Match</span>}
+                        {room.name}
+                      </span>
                       <span className="room-list__date">
                         Created {new Date(room.createdAt).toLocaleDateString([], dateFormat)}
                       </span>
@@ -56,6 +59,11 @@ function Dashboard() {
         </main>
 
         <aside className="side-forms">
+          <section className="side-form">
+            <h2>Compete</h2>
+            <p className="side-form__hint">A timed match in its own room. Share the link, let players in, start the clock.</p>
+            <Link to="/matches/new" className="button button--primary">New match</Link>
+          </section>
           <CreateRoom onRoomCreated={(room) => navigate(`/rooms/${room.id}`)} />
           <JoinRoom onRoomJoined={(roomId) => navigate(`/rooms/${roomId}`)} />
         </aside>

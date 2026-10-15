@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 
 import {
   getRoom,
@@ -34,9 +34,22 @@ import {
 } from "../services/arenaService"
 
 import MatchPanel from "../match/MatchPanel"
+import CompetePanel from "../match/CompetePanel"
 import MatchButton from "../match/MatchButton"
 import { isPrivateNow, serverOffset } from "../match/clock"
-import { endMatch, getMatch, joinMatch, startMatch, type Match, type MatchChangedMessage } from "../services/matchService"
+import {
+  approvePlayer,
+  createMatch,
+  declinePlayer,
+  endMatch,
+  getMatch,
+  matchLink,
+  matchesMadeFrom,
+  startMatch,
+  type Match,
+  type MatchChangedMessage,
+  type MatchSummary,
+} from "../services/matchService"
 import useCodeSync, {
   type FileChangeMessage,
   type RemoteCursor,
@@ -67,7 +80,9 @@ function Room() {
       const next = typeof open === "function" ? open(current === "problem") : open
       return next ? "problem" : current === "problem" ? null : current
     })
+  // In a match room: its match. In an ordinary room: the match rooms made from it.
   const [match, setMatch] = useState<Match | null>(null)
+  const [madeHere, setMadeHere] = useState<MatchSummary[]>([])
   // How far the server's clock is ahead of this browser's
   const [clockOffset, setClockOffset] = useState(0)
   // The latest thing that happened to the room's problem, from anyone in the room
@@ -76,6 +91,7 @@ function Room() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [nameOverrides, setNameOverrides] = useState<NameOverrides>(() => new Map())
 
+  const navigate = useNavigate()
   const editorRef = useRef<CodeEditorHandle>(null)
   // Only the newest reload may apply its result
   const resyncRequestRef = useRef(0)
@@ -105,7 +121,8 @@ function Room() {
 
         setRoom(roomData)
         setProblemSlug(roomData.problemSlug ?? null)
-        setProblemOpen(Boolean(roomData.problemSlug))
+        // A match room opens on its contest; an ordinary one on its problem, if it has one
+        setPanel(roomData.kind === "MATCH" ? "match" : roomData.problemSlug ? "problem" : null)
         setDocuments(docs)
         setActiveDocumentId(docs[0]?.id ?? "")
       } catch (error) {
@@ -213,23 +230,24 @@ function Room() {
     }
   }, [roomId, showMatch])
 
+  const roomKind = room?.kind ?? null
+  const isMatchRoom = roomKind === "MATCH"
+
   useEffect(() => {
-    if (!roomId) return
+    if (!roomId || !roomKind) return
     let cancelled = false
-    getMatch(roomId)
-      .then((found) => {
-        if (cancelled) return
-        showMatch(found)
-        if (found?.running) setPanel("match")
-      })
-      .catch(() => {})
+    if (roomKind === "MATCH") {
+      getMatch(roomId).then((found) => { if (!cancelled) showMatch(found) }).catch(() => {})
+    } else {
+      matchesMadeFrom(roomId).then((found) => { if (!cancelled) setMadeHere(found) }).catch(() => {})
+    }
     return () => { cancelled = true }
-  }, [roomId, showMatch])
+  }, [roomId, roomKind, showMatch])
 
   // When time runs out every private file becomes visible: reload them and the final standings.
   // The server decides; this only asks again just after the moment it said.
   useEffect(() => {
-    if (!match?.running) return
+    if (!match?.running || !match.endsAt) return
     const wait = Date.parse(match.endsAt) - (Date.now() + clockOffset) + 500
     const timer = setTimeout(() => {
       void loadMatch()
@@ -238,25 +256,22 @@ function Room() {
     return () => clearTimeout(timer)
   }, [match?.running, match?.endsAt, clockOffset, loadMatch, resync])
 
-  // After starting or joining, open this player's file for problem A once the load includes it
-  const openMyFirstMatchFile = (started: Match) => {
-    const first = started.problems[0]?.slug
-    openWhenLoadedRef.current = (doc) => doc.owner === me && doc.problemSlug === first
+  // When the match starts (or this player is let in late), open their file for problem A
+  // as soon as a load includes it; files sort by name, so A comes first
+  const openMyFirstMatchFile = () => {
+    openWhenLoadedRef.current = (doc) => doc.owner === me
   }
 
-  const handleStartMatch = async (slugs: string[], minutes: number) => {
-    if (!roomId) return
-    const started = await startMatch(roomId, slugs, minutes)
-    showMatch(started)
-    openMyFirstMatchFile(started)
-    await loadDocuments()
+  // From an ordinary room: the new match room opens in this tab
+  const handleCreateMatch = async (slugs: string[], minutes: number) => {
+    const created = await createMatch(slugs, minutes, roomId)
+    navigate(`/rooms/${created.roomId}`)
   }
 
-  const handleJoinMatch = async () => {
+  const handleStartMatch = async () => {
     if (!roomId) return
-    const joined = await joinMatch(roomId)
-    showMatch(joined)
-    openMyFirstMatchFile(joined)
+    showMatch(await startMatch(roomId))
+    openMyFirstMatchFile()
     await loadDocuments()
   }
 
@@ -266,19 +281,43 @@ function Room() {
     await loadDocuments()
   }
 
+  const handleApprove = async (username: string) => {
+    if (roomId) showMatch(await approvePlayer(roomId, username))
+  }
+
+  const handleDecline = async (username: string) => {
+    if (roomId) showMatch(await declinePlayer(roomId, username))
+  }
+
   const handleMatchChanged = useCallback((message: MatchChangedMessage) => {
-    void loadMatch()
-    if (message.event === "ENDED") void resync("the match was ended")
-    if (message.username === me) return
-    if (message.event === "STARTED") {
-      setPanel("match")
-      setRoomNews({ text: `${message.username} started a match`, tone: "info" })
-    } else if (message.event === "JOINED") {
-      setRoomNews({ text: `${message.username} joined the match`, tone: "info" })
-    } else if (message.event === "ENDED") {
-      setRoomNews({ text: `${message.username} ended the match`, tone: "info" })
+    if (message.event === "CREATED") {
+      // Only ordinary rooms hear this: a match room was made from here
+      if (roomId) matchesMadeFrom(roomId).then(setMadeHere).catch(() => {})
+      if (message.username !== me) {
+        setPanel("match")
+        setRoomNews({ text: `${message.username} made a match: open it from Compete`, tone: "info" })
+      }
+      return
     }
-  }, [loadMatch, resync, me])
+
+    void loadMatch()
+    const letInNow = message.event === "APPROVED" && message.username === me
+    if (message.event === "STARTED" || letInNow) {
+      openWhenLoadedRef.current = (doc) => doc.owner === me
+      void resync("the match started")
+    }
+    if (message.event === "ENDED") void resync("the match was ended")
+
+    const news: Partial<Record<MatchChangedMessage["event"], string>> = {
+      REQUESTED: `${message.username} asks to join`,
+      APPROVED: `${message.username} joined the match`,
+      STARTED: "The match has started",
+      ENDED: "The match is over",
+    }
+    if (message.username !== me && news[message.event]) {
+      setRoomNews({ text: news[message.event]!, tone: "info" })
+    }
+  }, [loadMatch, resync, me, roomId])
 
   const handleProblemChanged = useCallback((message: RoomProblemMessage) => {
     setProblemSlug(message.slug)
@@ -393,15 +432,17 @@ function Room() {
     }
   }
 
+  // A match room is shared by its link (joining it by id is refused); an ordinary room by its id
   const copyRoomId = async () => {
     if (!roomId) return
+    const shared = isMatchRoom ? matchLink(roomId) : roomId
     try {
-      await navigator.clipboard.writeText(roomId)
+      await navigator.clipboard.writeText(shared)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // Clipboard blocked (e.g. plain http): show the ID so it can be copied by hand
-      window.prompt("Room ID", roomId)
+      // Clipboard blocked (e.g. plain http): show it so it can be copied by hand
+      window.prompt(isMatchRoom ? "Match link" : "Room ID", shared)
     }
   }
 
@@ -437,7 +478,7 @@ function Room() {
       <TopBar title={room.name}>
         <PresenceSeats members={members} me={me} />
         <button type="button" className="button" onClick={() => void copyRoomId()}>
-          {copied ? "Copied" : "Copy room ID"}
+          {copied ? "Copied" : isMatchRoom ? "Copy match link" : "Copy room ID"}
         </button>
       </TopBar>
 
@@ -447,11 +488,15 @@ function Room() {
             id: doc.id,
             name: doc.fileName,
             // Private while the match it belongs to is running; the reload at the end unlocks it
-            locked: Boolean(match?.running && doc.privateUntil && Date.parse(doc.privateUntil) === Date.parse(match.endsAt)),
+            locked: Boolean(match?.running && match.endsAt && doc.privateUntil
+              && Date.parse(doc.privateUntil) === Date.parse(match.endsAt)),
           }))}
           activeId={activeDocumentId}
           onSelect={setActiveDocumentId}
           onCreate={handleCreateFile}
+          // A match room only has each player's own files
+          canCreate={!isMatchRoom}
+          canDelete={!isMatchRoom}
           onRename={handleRenameFile}
           onDelete={handleDeleteFile}
         />
@@ -469,17 +514,20 @@ function Room() {
               <MatchButton
                 match={match}
                 offset={clockOffset}
+                label={isMatchRoom ? "Match" : "Compete"}
                 pressed={panel === "match"}
                 onClick={() => setPanel((current) => current === "match" ? null : "match")}
               />
-              <button
-                type="button"
-                className="button button--quiet"
-                aria-pressed={problemOpen}
-                onClick={() => setProblemOpen((open) => !open)}
-              >
-                Problem
-              </button>
+              {!isMatchRoom && (
+                <button
+                  type="button"
+                  className="button button--quiet"
+                  aria-pressed={problemOpen}
+                  onClick={() => setProblemOpen((open) => !open)}
+                >
+                  Problem
+                </button>
+              )}
               <button
                 type="button"
                 className="button button--quiet"
@@ -512,18 +560,26 @@ function Room() {
           </div>
 
           <div className="editor-host">
-            {activeDocument ? (
-              <CodeEditor
-                ref={editorRef}
-                documents={shownDocuments}
-                activeDocumentId={activeDocumentId}
-                readOnly={!ready}
-                onLocalOperation={applyLocalOperation}
-                onCursorChange={sendVisibleCursor}
-                onReady={handleEditorReady}
-              />
-            ) : (
-              <p className="centered-note">This room has no files yet. Add one on the left.</p>
+            {/* Always mounted, even with no file to show: the room's live connection starts once
+                the editor is ready, and a match lobby (no files yet) still needs to hear
+                "asks to join" and "started" */}
+            <CodeEditor
+              ref={editorRef}
+              documents={shownDocuments}
+              activeDocumentId={activeDocumentId}
+              readOnly={!ready || !activeDocument}
+              onLocalOperation={applyLocalOperation}
+              onCursorChange={sendVisibleCursor}
+              onReady={handleEditorReady}
+            />
+            {!activeDocument && (
+              <p className="centered-note editor-host__empty">
+                {isMatchRoom
+                  ? match?.state === "LOBBY"
+                    ? "Your private files appear here when the host starts the match."
+                    : match?.state === "ENDED" ? "The match is over." : "Loading your files..."
+                  : "This room has no files yet. Add one on the left."}
+              </p>
             )}
           </div>
 
@@ -545,16 +601,21 @@ function Room() {
           </div>
         </main>
 
-        {panel === "match" && (
+        {panel === "match" && isMatchRoom && roomId && (
           <MatchPanel
+            roomId={roomId}
             match={match}
             offset={clockOffset}
             me={me}
+            onApprove={handleApprove}
+            onDecline={handleDecline}
             onStart={handleStartMatch}
-            onJoin={handleJoinMatch}
             onEnd={handleEndMatch}
             onClose={() => setPanel(null)}
           />
+        )}
+        {panel === "match" && !isMatchRoom && (
+          <CompetePanel matches={madeHere} onCreate={handleCreateMatch} onClose={() => setPanel(null)} />
         )}
 
         {problemOpen && (

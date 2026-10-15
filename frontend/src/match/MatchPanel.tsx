@@ -1,26 +1,24 @@
-import { useEffect, useState, type FormEvent } from "react"
-import { getProblem, listProblems, type ProblemDetail, type ProblemSummary } from "../services/arenaService"
-import type { Match, StandingCell } from "../services/matchService"
+import { useEffect, useState } from "react"
+import { getProblem, type ProblemDetail } from "../services/arenaService"
+import { matchLink, type Match, type StandingCell } from "../services/matchService"
 import DifficultyTag from "../arena/DifficultyTag"
 import ProblemStatement from "../arena/ProblemStatement"
 import { formatClock } from "./clock"
 import { useCountdown } from "./useCountdown"
 
-const DURATIONS = [15, 30, 45, 60, 90, 120]
-const MAX_PROBLEMS = 3
-
 interface MatchPanelProps {
+  roomId: string
   match: Match | null
   offset: number
   me: string | null
-  onStart: (slugs: string[], minutes: number) => Promise<void>
-  onJoin: () => Promise<void>
+  onApprove: (username: string) => Promise<void>
+  onDecline: (username: string) => Promise<void>
+  onStart: () => Promise<void>
   onEnd: () => Promise<void>
   onClose: () => void
 }
 
 const message = (reason: unknown, fallback: string) => (reason instanceof Error && reason.message) || fallback
-
 
 function Cell({ cell }: { cell: StandingCell | undefined }) {
   if (!cell || (!cell.solved && cell.rejected === 0)) return <td className="standings__cell" />
@@ -39,7 +37,7 @@ function Standings({ match, me }: { match: Match; me: string | null }) {
   if (match.standings.length === 0) return null
   return (
     <table className="standings">
-      <caption>{match.running ? "Standings" : "Final standings"}</caption>
+      <caption>{match.state === "ENDED" ? "Final standings" : "Standings"}</caption>
       <thead>
         <tr>
           <th scope="col">#</th>
@@ -66,75 +64,31 @@ function Standings({ match, me }: { match: Match; me: string | null }) {
   )
 }
 
-function StartForm({ onStart }: { onStart: MatchPanelProps["onStart"] }) {
-  const [problems, setProblems] = useState<ProblemSummary[]>([])
-  const [chosen, setChosen] = useState<string[]>([])
-  const [minutes, setMinutes] = useState(30)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
-
-  useEffect(() => {
-    listProblems().then(setProblems).catch(() => setProblems([]))
-  }, [])
-
-  const toggle = (slug: string) =>
-    setChosen((current) => current.includes(slug) ? current.filter((s) => s !== slug) : [...current, slug])
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
-    setBusy(true)
-    setError("")
+function ShareLink({ roomId }: { roomId: string }) {
+  const [copied, setCopied] = useState(false)
+  const link = matchLink(roomId)
+  const copy = async () => {
     try {
-      await onStart(chosen, minutes)
-    } catch (reason) {
-      setError(message(reason, "Could not start the match"))
-    } finally {
-      setBusy(false)
+      await navigator.clipboard.writeText(link)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      window.prompt("Match link", link)
     }
   }
-
   return (
-    <form className="match-start" onSubmit={(event) => void submit(event)}>
-      <h3>Start a match</h3>
-      <p className="match__note">
-        Everyone in the room can join. Each player gets a private file per problem; nobody sees anyone else's code until
-        the time is up. More problems solved wins; ties go to less time, with 5 minutes added per rejected try.
-      </p>
-      <fieldset className="match-start__problems">
-        <legend>Problems (up to {MAX_PROBLEMS}, in order A, B, C)</legend>
-        {problems.map((problem) => {
-          const index = chosen.indexOf(problem.slug)
-          return (
-            <label key={problem.slug} className="match-start__problem">
-              <input
-                type="checkbox"
-                checked={index >= 0}
-                disabled={index < 0 && chosen.length >= MAX_PROBLEMS}
-                onChange={() => toggle(problem.slug)}
-              />
-              <span className="match-start__letter">{index >= 0 ? String.fromCharCode(65 + index) : ""}</span>
-              <span>{problem.title}</span>
-              <DifficultyTag difficulty={problem.difficulty} />
-            </label>
-          )
-        })}
-      </fieldset>
-      <label className="field">
-        <span>Duration</span>
-        <select className="input" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))}>
-          {DURATIONS.map((value) => <option key={value} value={value}>{value} minutes</option>)}
-        </select>
-      </label>
-      <button type="submit" className="button button--primary" disabled={busy || chosen.length === 0}>
-        {busy ? "Starting..." : "Start match"}
-      </button>
-      {error && <p className="message message--error" role="alert">{error}</p>}
-    </form>
+    <div className="match__share">
+      <label htmlFor="match-link">Invite with this link</label>
+      <div className="side-form__row">
+        <input id="match-link" className="input" value={link} readOnly onFocus={(event) => event.target.select()} />
+        <button type="button" className="button" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button>
+      </div>
+    </div>
   )
 }
 
-// A running or finished match beside the code, or the form to start one
-function MatchPanel({ match, offset, me, onStart, onJoin, onEnd, onClose }: MatchPanelProps) {
+// The match room's contest: lobby, running match or final standings
+function MatchPanel({ roomId, match, offset, me, onApprove, onDecline, onStart, onEnd, onClose }: MatchPanelProps) {
   const left = useCountdown(match, offset)
   const [openSlug, setOpenSlug] = useState<string | null>(null)
   const [statement, setStatement] = useState<ProblemDetail | null>(null)
@@ -162,30 +116,81 @@ function MatchPanel({ match, offset, me, onStart, onJoin, onEnd, onClose }: Matc
     }
   }
 
-  const running = match?.running && left > 0
+  const isHost = match?.host === me
+  const running = Boolean(match?.running && left > 0)
+  const lobby = match?.state === "LOBBY"
 
   return (
     <aside className="problem-panel match-panel" aria-label="Match">
       <div className="problem-panel__head">
-        <strong className="match-panel__title">Match</strong>
+        <strong className="match-panel__title">
+          {lobby ? "Lobby" : running ? "Match" : "Match over"}
+        </strong>
         {running && <span className="match-clock" role="timer" aria-label="Time left">{formatClock(left)}</span>}
+        {running && isHost && !confirmEnd && (
+          <button type="button" className="button button--danger match__end-head" onClick={() => setConfirmEnd(true)}>
+            End
+          </button>
+        )}
         <button type="button" className="button button--quiet" onClick={onClose}>Hide</button>
       </div>
 
       <div className="problem-panel__body">
-        {match && running ? (
-          <>
-            {!match.joined && (
-              <div className="match__join">
-                <p>A match started by <strong>{match.host}</strong> is running. You get your own private file for each problem.
-                  Time counts from the start, so join soon.</p>
-                <button type="button" className="button button--primary" disabled={busy}
-                  onClick={() => void act(onJoin, "Could not join")}>
-                  {busy ? "Joining..." : "Join match"}
-                </button>
-              </div>
-            )}
+        {!match && <p className="match__note">Loading the match...</p>}
 
+        {match && confirmEnd && (
+          <div className="match__end" role="alert">
+            <span>End the match for everyone now? All files become visible.</span>
+            <button type="button" className="button button--danger" disabled={busy}
+              onClick={() => void act(onEnd, "Could not end the match")}>End now</button>
+            <button type="button" className="button button--quiet" onClick={() => setConfirmEnd(false)}>Cancel</button>
+          </div>
+        )}
+
+        {match && match.state !== "ENDED" && <ShareLink roomId={roomId} />}
+
+        {match && isHost && match.requests.length > 0 && match.state !== "ENDED" && (
+          <section className="match__requests" aria-label="Asking to join">
+            <h3>Asking to join ({match.requests.length})</h3>
+            <ul>
+              {match.requests.map((username) => (
+                <li key={username}>
+                  <span>{username}</span>
+                  <button type="button" className="button button--primary" disabled={busy}
+                    onClick={() => void act(() => onApprove(username), "Could not let them in")}>Let in</button>
+                  <button type="button" className="button button--quiet" disabled={busy}
+                    onClick={() => void act(() => onDecline(username), "Could not decline")}>Decline</button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {match && lobby && (
+          <section className="match__lobby">
+            <p className="match__note">
+              {match.problems.length} problem{match.problems.length > 1 ? "s" : ""}, {match.durationMinutes} minutes.
+              {" "}{isHost
+                ? "Share the link, let players in, and start when everyone is here. The clock starts for everyone at once."
+                : `Waiting for ${match.host} to start. The clock starts for everyone at once.`}
+            </p>
+            <h3>Players ({match.standings.length})</h3>
+            <ul className="match__players">
+              {match.standings.map((row) => (
+                <li key={row.username}>{row.username}{row.username === match.host ? " (host)" : ""}{row.username === me ? " (you)" : ""}</li>
+              ))}
+            </ul>
+            {isHost && (
+              <button type="button" className="button button--primary" disabled={busy}
+                onClick={() => void act(onStart, "Could not start the match")}>
+                {busy ? "Starting..." : `Start the ${match.durationMinutes}-minute match`}
+              </button>
+            )}
+          </section>
+        )}
+
+        {match && !lobby && (
+          <>
             <ol className="match__problems">
               {match.problems.map((problem) => (
                 <li key={problem.slug}>
@@ -201,35 +206,11 @@ function MatchPanel({ match, offset, me, onStart, onJoin, onEnd, onClose }: Matc
                 </li>
               ))}
             </ol>
-
             <Standings match={match} me={me} />
-
-            {match.host === me && (
-              confirmEnd ? (
-                <div className="match__end">
-                  <span>End it for everyone now? All files become visible.</span>
-                  <button type="button" className="button button--danger" disabled={busy}
-                    onClick={() => void act(onEnd, "Could not end the match")}>End now</button>
-                  <button type="button" className="button button--quiet" onClick={() => setConfirmEnd(false)}>Cancel</button>
-                </div>
-              ) : (
-                <button type="button" className="button button--quiet match__end-button" onClick={() => setConfirmEnd(true)}>
-                  End match early
-                </button>
-              )
-            )}
-          </>
-        ) : (
-          <>
-            {match && (
-              <section className="match__result">
-                <Standings match={match} me={me} />
-                <p className="match__note">The match is over: everyone's files are visible in the file list now.</p>
-              </section>
-            )}
-            <StartForm onStart={onStart} />
+            {!running && <p className="match__note">The match is over: everyone's files are visible in the file list now.</p>}
           </>
         )}
+
         {error && <p className="message message--error" role="alert">{error}</p>}
       </div>
     </aside>

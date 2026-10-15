@@ -10,5 +10,6 @@ export function useCountdown(match: Match | null, offset: number): number {
     const timer = setInterval(() => setNow(Date.now()), 250)
     return () => clearInterval(timer)
   }, [match?.running, match?.endsAt])
-  return match ? remainingMs(match.endsAt, offset, now) : 0
+  // No end time while the match waits in its lobby
+  return match?.endsAt ? remainingMs(match.endsAt, offset, now) : 0
 }

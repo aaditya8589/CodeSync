@@ -108,6 +108,12 @@ function Problem() {
           </section>
 
           <section className="side-form">
+            <h2>Compete on it</h2>
+            <p className="side-form__hint">A timed match with this problem in its own room, against whoever you invite.</p>
+            <Link to={`/matches/new?problem=${problem?.slug ?? ""}`} className="button">New match with this problem</Link>
+          </section>
+
+          <section className="side-form">
             <h2>Your submissions</h2>
             {submissions.length === 0 ? (
               <p className="side-form__hint">None yet.</p>
