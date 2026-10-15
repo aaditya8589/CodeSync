@@ -22,6 +22,8 @@ export interface ProblemDetail extends ProblemSummary {
   inputFormat: string
   outputFormat: string
   constraints: string
+  // What a good solution achieves, e.g. "O(n log n)"; null if the problem names none
+  expectedComplexity: string | null
   examples: { input: string; output: string }[]
   testCount: number
 }
@@ -38,6 +40,15 @@ export interface TestResult {
   errorOutput: string | null
 }
 
+// How the running time grew over the hidden tests' doubling sizes, measured by the judge
+export interface Growth {
+  kind: "MEASURED" | "TOO_FAST" | "TIMED_OUT"
+  // k in time ~ size^k, only when measured
+  exponent: number | null
+  summary: string
+  detail: string
+}
+
 export interface JudgeResult {
   verdict: Verdict
   passed: number
@@ -46,6 +57,9 @@ export interface JudgeResult {
   maxTimeMs: number
   compileOutput: string
   tests: TestResult[]
+  expectedComplexity: string | null
+  // null when the problem's tests do not grow in size, or nothing ran
+  growth: Growth | null
 }
 
 export interface SubmissionSummary {

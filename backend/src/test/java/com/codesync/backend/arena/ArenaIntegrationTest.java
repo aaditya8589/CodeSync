@@ -72,6 +72,7 @@ class ArenaIntegrationTest {
         assertEquals(2, detail.examples().size());
         assertEquals("0 1\n", detail.examples().get(0).output());
         assertTrue(detail.testCount() > detail.examples().size());
+        assertEquals("O(n)", detail.expectedComplexity());
         assertThrows(ProblemNotFoundException.class, () -> arenaService.getProblem("no-such-problem", member));
     }
 

@@ -78,6 +78,22 @@ function OutputPanel({ state }: { state: RunState }) {
   )
 }
 
+// What the clock saw across the size ladder, next to what the problem expects
+function GrowthReport({ result }: { result: JudgeResult }) {
+  const { growth, expectedComplexity } = result
+  if (!growth) return null
+  const slow = growth.kind === "TIMED_OUT" || (growth.exponent !== null && growth.exponent >= 1.4)
+  return (
+    <section className={`judge__growth${slow ? " judge__growth--slow" : ""}`} aria-label="Time complexity">
+      <p className="judge__growth-summary">
+        <strong>{growth.summary}</strong>
+        {expectedComplexity && <span className="judge__growth-expected">Expected {expectedComplexity}</span>}
+      </p>
+      <p className="judge__growth-detail">{growth.detail}</p>
+    </section>
+  )
+}
+
 function JudgeReport({ result }: { result: JudgeResult }) {
   // The first failing example is worth showing in full; hidden tests only give their verdict
   const failedSample = result.tests.find((test) => test.sample && test.verdict !== "ACCEPTED")
@@ -85,6 +101,8 @@ function JudgeReport({ result }: { result: JudgeResult }) {
   return (
     <div className="console__output judge">
       {result.compileOutput && <pre className="console__stderr">{result.compileOutput}</pre>}
+
+      <GrowthReport result={result} />
 
       {result.tests.length > 0 && (
         <ol className="judge__tests">

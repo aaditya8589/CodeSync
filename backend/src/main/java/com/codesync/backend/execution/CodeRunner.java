@@ -25,7 +25,8 @@ public class CodeRunner {
 
     // Per test. Every expected output must be smaller (ProblemFileTest checks), so output that
     // was cut off is always wrong rather than unjudgeable.
-    public static final int MAX_TEST_OUTPUT_BYTES = 256 * 1024;
+    // Enough for the largest expected answer (65536 distances in Shortest Paths)
+    public static final int MAX_TEST_OUTPUT_BYTES = 1024 * 1024;
     static final int MAX_TEST_ERROR_BYTES = 4 * 1024;
 
     private static final int TIMEOUT_EXIT_CODE = 124;

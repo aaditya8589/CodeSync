@@ -94,6 +94,18 @@ def solve_shortest_paths(text):
 
 # ---------- test inputs ----------
 
+# Hidden tests double in size up to the largest one. The judge times every test, so from a
+# ladder like this it can see how a solution's running time grows with the input: doubled
+# input and doubled time means about linear, four times the time about quadratic. The top size
+# is chosen so the expected solution is fast and a quadratic one runs out of time.
+def ladder(smallest, largest):
+    sizes = []
+    while smallest <= largest:
+        sizes.append(smallest)
+        smallest *= 2
+    return sizes
+
+
 def add_tests():
     tests = ["0 0\n", "-7 3\n", "1000000000000000000 1000000000000000000\n",
              "-1000000000000000000 -1000000000000000000\n", "123456789 -987654321\n"]
@@ -101,10 +113,13 @@ def add_tests():
     return tests
 
 
-def two_sum_case(n, lo, hi):
+def two_sum_case(n, lo, hi, late=False):
     while True:
         values = [rng.randint(lo, hi) for _ in range(n)]
-        i, j = sorted(rng.sample(range(n), 2))
+        # For the size ladder the pair sits near the end, so trying every pair really costs
+        # about n^2 / 2 steps on every size and the growth estimate sees a clean curve
+        start = n - max(2, n // 10) if late else 0
+        i, j = sorted(rng.sample(range(start, n), 2))
         target = values[i] + values[j]
         # Exactly one pair must work, so the answer is unique
         pairs = 0
@@ -119,7 +134,8 @@ def two_sum_case(n, lo, hi):
 def two_sum_tests():
     tests = ["2 0\n-5 5\n", "3 10\n10 0 7\n"]
     tests += [two_sum_case(n, -50, 50) for n in (5, 8, 12)]
-    tests += [two_sum_case(n, -10**9, 10**9) for n in (100, 1000, 5000, 20000)]
+    tests += [two_sum_case(n, -10**9, 10**9) for n in (100, 500)]
+    tests += [two_sum_case(n, -10**9, 10**9, late=True) for n in ladder(1024, 131072)]
     return tests
 
 
@@ -143,13 +159,14 @@ def bracket_tests():
     tests = ["(\n", ")(\n", "([)]\n", "((((((((((\n", "{[()()]}\n"]
     s = bracket_string(5000, True)
     tests += [s + "\n", s[:-1] + "\n", s + "(\n"]
-    tests += [bracket_string(100000, True) + "\n", bracket_string(100000, False) + "\n", "(" * 50000 + ")" * 50000 + "\n"]
+    tests += [bracket_string(100000, False) + "\n", "(" * 50000 + ")" * 50000 + "\n"]
+    tests += [bracket_string(length, True) + "\n" for length in ladder(2048, 262144)]
     return tests
 
 
 def max_subarray_tests():
     tests = ["1\n-7\n", "5\n-3 -1 -2 -5 -4\n", "4\n1 2 3 4\n"]
-    for n in (10, 100, 1000, 20000, 50000):
+    for n in [10, 100, 500] + ladder(1024, 131072):
         values = [rng.randint(-10**9, 10**9) for _ in range(n)]
         tests.append(f"{n}\n{' '.join(map(str, values))}\n")
     big = [10**9] * 50000
@@ -173,6 +190,7 @@ def island_tests():
             snake.append(("." * 299 + "#") if i % 4 == 1 else ("#" + "." * 299))
     tests.append("300 300\n" + "\n".join(snake) + "\n")  # one long winding island: deep recursion
     tests.append("300 300\n" + "\n".join("#" * 300 for _ in range(300)) + "\n")
+    tests += [grid_case(side, side, 0.5) for side in ladder(32, 512)]
     return tests
 
 
@@ -190,8 +208,9 @@ def graph_case(n, m, max_w, connected=True):
 
 def shortest_path_tests():
     tests = ["1 0\n", "3 1\n1 2 5\n", "4 4\n1 2 1\n2 3 1\n1 3 5\n3 4 0\n"]
-    tests += [graph_case(10, 15, 20), graph_case(200, 600, 1000, connected=False),
-              graph_case(2000, 6000, 10**6), graph_case(5000, 20000, 10**9)]
+    tests += [graph_case(10, 15, 20), graph_case(200, 600, 1000, connected=False)]
+    # Weights up to 10^6 on paths of up to 65536 roads: distances need 64-bit integers
+    tests += [graph_case(n, 2 * n, 10**6) for n in ladder(1024, 65536)]
     return tests
 
 
@@ -208,6 +227,7 @@ PROBLEMS = [
         "input": "One line with two integers `a` and `b`.",
         "output": "Print `a + b`.",
         "constraints": "-10^18 <= a, b <= 10^18",
+        "complexity": "O(1)",
         "samples": ["3 4\n", "-10 25\n"],
         "tests": add_tests(),
         "solve": solve_add,
@@ -220,7 +240,8 @@ PROBLEMS = [
                      "positions whose values add up to `target`. Exactly one such pair exists.",
         "input": "The first line has `n` and `target`. The second line has the `n` integers.",
         "output": "Print the two positions `i j` (0-based, with `i < j`).",
-        "constraints": "2 <= n <= 20000\n-10^9 <= values <= 10^9\nExactly one pair adds up to target.",
+        "constraints": "2 <= n <= 131072\n-10^9 <= values <= 10^9\nExactly one pair adds up to target.",
+        "complexity": "O(n)",
         "samples": ["4 9\n2 7 11 15\n", "3 6\n3 2 4\n"],
         "tests": two_sum_tests(),
         "solve": solve_two_sum,
@@ -234,7 +255,8 @@ PROBLEMS = [
                      "given string is valid.",
         "input": "One line with the string.",
         "output": "Print `YES` if the string is valid, otherwise `NO`.",
-        "constraints": "1 <= length <= 100000",
+        "constraints": "1 <= length <= 262144",
+        "complexity": "O(n)",
         "samples": ["()[]{}\n", "([)]\n", "{[]}\n"],
         "tests": bracket_tests(),
         "solve": solve_brackets,
@@ -248,7 +270,8 @@ PROBLEMS = [
                      "32-bit integer.",
         "input": "The first line has `n`. The second line has the `n` integers.",
         "output": "Print the largest sum.",
-        "constraints": "1 <= n <= 50000\n-10^9 <= values <= 10^9",
+        "constraints": "1 <= n <= 131072\n-10^9 <= values <= 10^9",
+        "complexity": "O(n)",
         "samples": ["9\n-2 1 -3 4 -1 2 1 -5 4\n", "3\n-3 -1 -2\n"],
         "tests": max_subarray_tests(),
         "solve": solve_max_subarray,
@@ -264,7 +287,8 @@ PROBLEMS = [
         "input": "The first line has the number of rows `r` and columns `c`. Then `r` lines of `c` "
                  "characters follow.",
         "output": "Print the number of islands.",
-        "constraints": "1 <= r, c <= 300",
+        "constraints": "1 <= r, c <= 512",
+        "complexity": "O(r * c)",
         "samples": ["4 5\n##...\n##..#\n....#\n.#.##\n", "3 3\n...\n...\n...\n"],
         "tests": island_tests(),
         "solve": solve_islands,
@@ -279,7 +303,8 @@ PROBLEMS = [
                  "cities `u` and `v` joined by a road of length `w`.",
         "output": "Print `n` numbers on one line: the shortest distance from city 1 to cities "
                   "1, 2, ..., n, or `-1` for a city that cannot be reached.",
-        "constraints": "1 <= n <= 5000\n0 <= m <= 20000\n0 <= w <= 10^9",
+        "constraints": "1 <= n <= 65536\n0 <= m <= 131072\n0 <= w <= 10^6",
+        "complexity": "O((n + m) log n)",
         "samples": ["4 4\n1 2 3\n2 3 4\n1 3 10\n3 4 1\n", "3 1\n1 2 7\n"],
         "tests": shortest_path_tests(),
         "solve": solve_shortest_paths,
@@ -304,6 +329,7 @@ def main():
             f"title: {problem['title']}\n",
             f"difficulty: {problem['difficulty']}\n",
             f"position: {position}\n",
+            f"complexity: {problem['complexity']}\n",
             section("statement", problem["statement"]),
             section("input", problem["input"]),
             section("output", problem["output"]),

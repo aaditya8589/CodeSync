@@ -4,6 +4,7 @@ import com.codesync.backend.execution.CodeRunner;
 import com.codesync.backend.execution.ExecutionStatus;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -104,5 +105,43 @@ class JudgeTest {
                 new CodeRunner.TestOutcome(ExecutionStatus.MEMORY_LIMIT_EXCEEDED, 137, 700, "", "", false)));
         assertEquals(Verdict.MEMORY_LIMIT_EXCEEDED, result.verdict());
         assertEquals(700, result.maxTimeMs());
+    }
+
+    @Test
+    void aQuadraticSolutionThatTimesOutGetsAGrowthEstimate() {
+        // A ladder of hidden tests, 1 KB .. 64 KB; time grows 4x per doubling until 64 KB runs out of time
+        List<ProblemFile.Test> ladder = new ArrayList<>();
+        List<CodeRunner.TestOutcome> outcomes = new ArrayList<>();
+        long millis = 20;
+        for (int size = 1024; size <= 64 * 1024; size *= 2) {
+            ladder.add(new ProblemFile.Test(false, "x".repeat(size), "ok\n"));
+            if (size < 64 * 1024) {
+                outcomes.add(new CodeRunner.TestOutcome(ExecutionStatus.SUCCESS, 0, 5 + millis, "ok\n", "", false));
+                millis *= 4;
+            } else {
+                outcomes.add(new CodeRunner.TestOutcome(ExecutionStatus.TIME_LIMIT_EXCEEDED, 124, 2000, "", "", false));
+            }
+        }
+
+        Judge.Result result = Judge.judge(ladder, new CodeRunner.TestRun(null, "", outcomes, 100), "O(n)");
+
+        assertEquals(Verdict.TIME_LIMIT_EXCEEDED, result.verdict());
+        assertEquals("O(n)", result.expectedComplexity());
+        assertEquals(Growth.Kind.MEASURED, result.growth().kind());
+        assertTrue(result.growth().summary().contains("quadratically"), result.growth().summary());
+        assertTrue(result.growth().detail().contains("64 KB ran out of time"), result.growth().detail());
+    }
+
+    @Test
+    void aCompileErrorStillNamesTheExpectedComplexityButMeasuresNothing() {
+        Judge.Result result = Judge.judge(TESTS,
+                new CodeRunner.TestRun(ExecutionStatus.COMPILE_ERROR, "error: ';' expected", List.of(), 100), "O(n log n)");
+        assertEquals("O(n log n)", result.expectedComplexity());
+        assertNull(result.growth());
+    }
+
+    @Test
+    void smallTestsOfOneSizeGiveNoEstimate() {
+        assertNull(Judge.judge(TESTS, ran(ok("3\n"), ok("10\n"), ok("8\n"))).growth());
     }
 }

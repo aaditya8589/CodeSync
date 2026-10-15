@@ -76,6 +76,9 @@ class ProblemFileTest {
             assertTrue(problem.tests().size() >= 8, problem.slug() + " has too few tests");
             assertTrue(problem.tests().stream().anyMatch(ProblemFile.Test::sample), problem.slug());
             assertTrue(problem.tests().stream().anyMatch(test -> !test.sample()), problem.slug());
+            assertTrue(problem.expectedComplexity() != null && problem.expectedComplexity().startsWith("O("),
+                    problem.slug() + " names no expected complexity");
+            assertEquals(64, problem.contentHash().length(), problem.slug());
             for (ProblemFile.Test test : problem.tests()) {
                 assertTrue(test.input().endsWith("\n"), problem.slug());
                 assertFalse(test.expectedOutput().isBlank(), problem.slug());
@@ -83,5 +86,17 @@ class ProblemFileTest {
                         < com.codesync.backend.execution.CodeRunner.MAX_TEST_OUTPUT_BYTES, problem.slug());
             }
         }
+    }
+
+    @Test
+    void theComplexityHeaderIsOptionalAndTheHashFollowsTheText() {
+        ProblemFile plain = ProblemFile.parse("x", EXAMPLE);
+        assertEquals(null, plain.expectedComplexity());
+
+        ProblemFile named = ProblemFile.parse("x", EXAMPLE.replace("title: Add Two Numbers\n",
+                "title: Add Two Numbers\ncomplexity: O(1)\n"));
+        assertEquals("O(1)", named.expectedComplexity());
+        assertFalse(plain.contentHash().equals(named.contentHash()));
+        assertEquals(plain.contentHash(), ProblemFile.parse("x", EXAMPLE).contentHash());
     }
 }
