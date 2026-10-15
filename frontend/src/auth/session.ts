@@ -52,3 +52,17 @@ export function afterLoginPath(): string {
   // Only paths on this site: "//evil.example" or "https://..." would send the user elsewhere
   return next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard"
 }
+
+/**
+ * Every tab of a browser shares one login. When another tab signs in as someone else or signs
+ * out, this tab would keep showing the old user's room while its requests already go out as the
+ * new one. Reloading makes what the tab shows match who it acts as. (The "storage" event only
+ * fires in the other tabs, never in the one that made the change.)
+ */
+export function followLoginChangesInOtherTabs(): () => void {
+  const onChange = (event: StorageEvent) => {
+    if (event.key === "token" || event.key === null) window.location.reload()
+  }
+  window.addEventListener("storage", onChange)
+  return () => window.removeEventListener("storage", onChange)
+}
