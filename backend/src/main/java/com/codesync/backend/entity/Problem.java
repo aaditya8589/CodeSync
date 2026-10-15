@@ -39,6 +39,13 @@ public class Problem {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String constraints;
 
+    @Column(name = "expected_complexity", length = 40)
+    private String expectedComplexity;
+
+    // SHA-256 of the problem file it was loaded from
+    @Column(name = "content_hash", length = 64)
+    private String contentHash;
+
     @OneToMany(mappedBy = "problem", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
     private List<TestCase> testCases = new ArrayList<>();
@@ -59,10 +66,15 @@ public class Problem {
     public String getInputFormat() { return inputFormat; }
     public String getOutputFormat() { return outputFormat; }
     public String getConstraints() { return constraints; }
+    public String getExpectedComplexity() { return expectedComplexity; }
+    public String getContentHash() { return contentHash; }
     public List<TestCase> getTestCases() { return testCases; }
 
     public void update(String title, String difficulty, int position, String statement,
-                       String inputFormat, String outputFormat, String constraints) {
+                       String inputFormat, String outputFormat, String constraints,
+                       String expectedComplexity, String contentHash) {
+        this.expectedComplexity = expectedComplexity;
+        this.contentHash = contentHash;
         this.title = title;
         this.difficulty = difficulty;
         this.position = position;

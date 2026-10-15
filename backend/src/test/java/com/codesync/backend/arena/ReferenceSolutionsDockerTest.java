@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Runs an independent solution for every bundled problem through the real judge. If a problem's
@@ -45,7 +46,7 @@ class ReferenceSolutionsDockerTest {
         ProblemFile problem = ProblemCatalog.loadAll().stream()
                 .filter(file -> file.slug().equals(slug)).findFirst().orElseThrow();
         CodeRunner.TestRun run = runner.runTests(language, source, problem.tests().stream().map(ProblemFile.Test::input).toList());
-        return Judge.judge(problem.tests(), run);
+        return Judge.judge(problem.tests(), run, problem.expectedComplexity());
     }
 
     @Test
@@ -78,5 +79,25 @@ class ReferenceSolutionsDockerTest {
         Judge.Result result = judge("maximum-subarray", Language.CPP, overflow);
         assertEquals(Verdict.WRONG_ANSWER, result.verdict());
         assertEquals(true, result.tests().get(0).sample() && result.tests().get(0).verdict() == Verdict.ACCEPTED);
+    }
+
+    @Test
+    void tryingEveryPairRunsOutOfTimeAndReadsAsQuadratic() {
+        // Correct, but O(n^2): fine on the small tests, too slow at the top of the size ladder
+        Judge.Result result = judge("two-sum", Language.CPP, solution("two-sum-brute-force.cpp"));
+        assertEquals(Verdict.TIME_LIMIT_EXCEEDED, result.verdict());
+        assertEquals("O(n)", result.expectedComplexity());
+        assertEquals(Growth.Kind.MEASURED, result.growth().kind());
+        assertTrue(result.growth().summary().contains("quadratically"), result.growth().toString());
+        assertTrue(result.growth().detail().contains("ran out of time"), result.growth().detail());
+    }
+
+    @Test
+    void theReferenceSolutionReadsAsLinear() {
+        Judge.Result result = judge("two-sum", Language.CPP, solution("two-sum.cpp"));
+        assertEquals(Verdict.ACCEPTED, result.verdict());
+        // On a fast machine the whole ladder may finish too quickly to measure, which is also fine
+        assertTrue(result.growth().kind() == Growth.Kind.TOO_FAST || result.growth().summary().contains("linearly"),
+                result.growth().toString());
     }
 }

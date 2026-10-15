@@ -11,6 +11,7 @@ public record ProblemDetail(
         String inputFormat,
         String outputFormat,
         String constraints,
+        String expectedComplexity,
         List<Example> examples,
         int testCount,
         boolean solved

@@ -1,6 +1,7 @@
 title: Add Two Numbers
 difficulty: Easy
 position: 1
+complexity: O(1)
 === statement
 Read two integers and print their sum.
 

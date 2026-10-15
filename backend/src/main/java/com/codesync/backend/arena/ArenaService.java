@@ -40,7 +40,7 @@ public class ArenaService {
 
     /** What a submission needs from the database, read before the (slow) judging starts. */
     private record Attempt(UUID problemId, String problemTitle, List<ProblemFile.Test> tests,
-                           String fileName, String source, UUID matchId) {
+                           String fileName, String source, UUID matchId, String expectedComplexity) {
     }
 
     /** matchId is set when the submission counts toward a match's standings. */
@@ -85,8 +85,7 @@ public class ArenaService {
     @Transactional(readOnly = true)
     public ProblemDetail getProblem(String slug, String username) {
         Problem problem = findProblem(slug);
-        List<ProblemDetail.Example> examples = problem.getTestCases().stream()
-                .filter(test -> test.isSample())
+        List<ProblemDetail.Example> examples = problemRepository.findSamples(problem.getId()).stream()
                 .map(test -> new ProblemDetail.Example(test.getInput(), test.getExpectedOutput()))
                 .toList();
         boolean solved = submissionRepository.existsByProblemIdAndUsernameAndVerdict(
@@ -94,7 +93,8 @@ public class ArenaService {
 
         return new ProblemDetail(problem.getSlug(), problem.getTitle(), problem.getDifficulty(),
                 problem.getStatement(), problem.getInputFormat(), problem.getOutputFormat(),
-                problem.getConstraints(), examples, problem.getTestCases().size(), solved);
+                problem.getConstraints(), problem.getExpectedComplexity(), examples,
+                (int) problemRepository.countTests(problem.getId()), solved);
     }
 
     @Transactional(readOnly = true)
@@ -154,7 +154,7 @@ public class ArenaService {
                     .map(test -> new ProblemFile.Test(test.isSample(), test.getInput(), test.getExpectedOutput()))
                     .toList();
             return new Attempt(problem.getId(), problem.getTitle(), tests, document.getFileName(),
-                    document.getContent(), matchId);
+                    document.getContent(), matchId, problem.getExpectedComplexity());
         });
 
         Language language = Language.fromFileName(attempt.fileName())
@@ -163,7 +163,7 @@ public class ArenaService {
 
         CodeRunner.TestRun run = executionService.runTests(
                 language, attempt.source(), attempt.tests().stream().map(ProblemFile.Test::input).toList());
-        Judge.Result result = Judge.judge(attempt.tests(), run);
+        Judge.Result result = Judge.judge(attempt.tests(), run, attempt.expectedComplexity());
 
         transactions.executeWithoutResult(status -> submissionRepository.save(new Submission(
                 problemRepository.getReferenceById(attempt.problemId()),

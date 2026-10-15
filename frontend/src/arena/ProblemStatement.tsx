@@ -19,6 +19,13 @@ function ProblemStatement({ problem }: { problem: ProblemDetail }) {
         </>
       )}
 
+      {problem.expectedComplexity && (
+        <p className="statement__complexity">
+          Expected time complexity: <code>{problem.expectedComplexity}</code>.
+          {" "}The hidden tests double in size, so a slower solution runs out of time on the largest ones.
+        </p>
+      )}
+
       {problem.examples.map((example, index) => (
         <div className="example" key={index}>
           <h3>Example {index + 1}</h3>

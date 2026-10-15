@@ -31,7 +31,11 @@ public final class Judge {
             Integer failedTest,
             long maxTimeMs,
             String compileOutput,
-            List<TestResult> tests
+            List<TestResult> tests,
+            // What a good solution achieves, e.g. "O(n)"; null if the problem names none
+            String expectedComplexity,
+            // How this run's time grew with input size; null when there was nothing to measure
+            Growth growth
     ) {
     }
 
@@ -39,13 +43,17 @@ public final class Judge {
     }
 
     public static Result judge(List<ProblemFile.Test> tests, CodeRunner.TestRun run) {
+        return judge(tests, run, null);
+    }
+
+    public static Result judge(List<ProblemFile.Test> tests, CodeRunner.TestRun run, String expectedComplexity) {
         int total = tests.size();
 
         if (run.failure() == ExecutionStatus.COMPILE_ERROR) {
-            return new Result(Verdict.COMPILE_ERROR, 0, total, null, 0, run.message(), List.of());
+            return new Result(Verdict.COMPILE_ERROR, 0, total, null, 0, run.message(), List.of(), expectedComplexity, null);
         }
         if (run.failure() == ExecutionStatus.INTERNAL_ERROR) {
-            return new Result(Verdict.INTERNAL_ERROR, 0, total, null, 0, run.message(), List.of());
+            return new Result(Verdict.INTERNAL_ERROR, 0, total, null, 0, run.message(), List.of(), expectedComplexity, null);
         }
 
         List<TestResult> results = new ArrayList<>();
@@ -102,7 +110,28 @@ public final class Judge {
             failedTest = passed + 1;
         }
 
-        return new Result(overall, passed, total, failedTest, maxTime, "", List.copyOf(results));
+        return new Result(overall, passed, total, failedTest, maxTime, "", List.copyOf(results),
+                expectedComplexity, growth(tests, run));
+    }
+
+    // Timings of the tests that ran to the end; a crash or a limit says nothing about growth
+    private static Growth growth(List<ProblemFile.Test> tests, CodeRunner.TestRun run) {
+        List<Long> sizes = tests.stream().map(test -> (long) test.input().length()).toList();
+        List<Growth.Point> finished = new ArrayList<>();
+        Long timedOut = null;
+        for (int i = 0; i < run.outcomes().size() && i < tests.size(); i++) {
+            CodeRunner.TestOutcome outcome = run.outcomes().get(i);
+            if (outcome.status() == ExecutionStatus.SUCCESS) {
+                finished.add(new Growth.Point(sizes.get(i), outcome.timeMs()));
+            } else if (outcome.status() == ExecutionStatus.TIME_LIMIT_EXCEEDED && timedOut == null) {
+                timedOut = sizes.get(i);
+            }
+        }
+        if (timedOut == null && run.failure() == ExecutionStatus.TIME_LIMIT_EXCEEDED
+                && run.outcomes().size() < tests.size()) {
+            timedOut = sizes.get(run.outcomes().size());
+        }
+        return Growth.estimate(sizes, finished, timedOut);
     }
 
     static Verdict verdictFor(CodeRunner.TestOutcome outcome, String expected) {

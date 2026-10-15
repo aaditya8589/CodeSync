@@ -19,7 +19,11 @@ public record ProblemFile(
         String inputFormat,
         String outputFormat,
         String constraints,
-        List<Test> tests
+        // The time complexity a good solution has, e.g. "O(n log n)"; null if the file names none
+        String expectedComplexity,
+        List<Test> tests,
+        // Of the whole file, so an unchanged problem is not rewritten into the database
+        String contentHash
 ) {
 
     public record Test(boolean sample, String input, String expectedOutput) {
@@ -74,8 +78,19 @@ public record ProblemFile(
                 required(sections, "input", slug),
                 required(sections, "output", slug),
                 sections.getOrDefault("constraints", ""),
-                List.copyOf(tests)
+                header.get("complexity"),
+                List.copyOf(tests),
+                sha256(text)
         );
+    }
+
+    private static String sha256(String text) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     // The file ends every section with a newline; the last one belongs to the file, not the answer

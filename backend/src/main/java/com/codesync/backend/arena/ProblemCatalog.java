@@ -37,10 +37,17 @@ public class ProblemCatalog {
     @Transactional
     public void syncProblems() {
         List<ProblemFile> files = loadAll();
+        int changed = 0;
         for (ProblemFile file : files) {
             Problem problem = problemRepository.findBySlug(file.slug()).orElseGet(() -> new Problem(file.slug()));
+            // The files hold megabytes of tests; rewriting them all on every start would be slow
+            if (file.contentHash().equals(problem.getContentHash())) {
+                continue;
+            }
+            changed++;
             problem.update(file.title(), file.difficulty(), file.position(), file.statement(),
-                    file.inputFormat(), file.outputFormat(), file.constraints());
+                    file.inputFormat(), file.outputFormat(), file.constraints(),
+                    file.expectedComplexity(), file.contentHash());
 
             problem.getTestCases().clear();
             for (int i = 0; i < file.tests().size(); i++) {
@@ -49,7 +56,7 @@ public class ProblemCatalog {
             }
             problemRepository.save(problem);
         }
-        log.info("Loaded {} problems", files.size());
+        log.info("Loaded {} problems ({} new or changed)", files.size(), changed);
     }
 
     public static List<ProblemFile> loadAll() {

@@ -625,6 +625,7 @@ a { color: inherit; }
 }
 .constraints { margin: 0; padding-left: 18px; }
 .constraints li { margin-bottom: 4px; }
+.statement__complexity { margin-top: 12px !important; color: var(--muted); font-size: 14px; }
 .statement__note { margin-top: 20px !important; color: var(--muted); font-size: 14px; }
 
 .example__pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
@@ -716,6 +717,12 @@ select.input { appearance: auto; padding-right: 6px; }
 .judge__verdict { font-weight: 500; }
 .judge__time { color: var(--muted); }
 .judge__detail { margin-top: 14px; }
+.judge__growth { margin: 0 0 12px; padding: 8px 12px; border-left: 3px solid var(--ok); background: var(--raised); border-radius: var(--radius-s); }
+.judge__growth--slow { border-left-color: var(--warn); }
+.judge__growth p { margin: 0; }
+.judge__growth-summary { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.judge__growth-expected { color: var(--muted); font-size: 13px; }
+.judge__growth-detail { margin-top: 4px !important; color: var(--muted); font-size: 13px; }
 .judge__detail p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
 
 @media (max-width: 1100px) {
