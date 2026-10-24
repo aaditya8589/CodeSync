@@ -1,6 +1,6 @@
 title: Maximum Subarray Sum
 difficulty: Medium
-position: 4
+position: 6
 complexity: O(n)
 === statement
 Find the largest sum of a contiguous, non-empty part of the array.

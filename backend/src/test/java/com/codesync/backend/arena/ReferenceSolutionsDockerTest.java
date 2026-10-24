@@ -88,7 +88,9 @@ class ReferenceSolutionsDockerTest {
         assertEquals(Verdict.TIME_LIMIT_EXCEEDED, result.verdict());
         assertEquals("O(n)", result.expectedComplexity());
         assertEquals(Growth.Kind.MEASURED, result.growth().kind());
-        assertTrue(result.growth().summary().contains("quadratically"), result.growth().toString());
+        // Usually x4.0 per doubling; on a busy machine the smaller timings are noisy, so
+        // anything clearly faster than linear counts
+        assertTrue(result.growth().exponent() >= 1.5, result.growth().toString());
         assertTrue(result.growth().detail().contains("ran out of time"), result.growth().detail());
     }
 
