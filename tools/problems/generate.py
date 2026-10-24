@@ -3,6 +3,7 @@
 Expected outputs come from the reference solutions below, so they are correct by construction.
 Run from the repository root:  python tools/problems/generate.py
 """
+import bisect
 import heapq
 import random
 from collections import deque
@@ -90,6 +91,114 @@ def solve_shortest_paths(text):
                 dist[v] = d + w
                 heapq.heappush(heap, (d + w, v))
     return " ".join(str(-1 if d is None else d) for d in dist[1:]) + "\n"
+
+
+def solve_balance(text):
+    data = list(map(int, text.split()))
+    values = data[1:]
+    total = sum(values)
+    left = 0
+    for i, x in enumerate(values):
+        if left == total - left - x:
+            return f"{i}\n"
+        left += x
+    return "-1\n"
+
+
+def solve_stock(text):
+    data = list(map(int, text.split()))
+    best, cheapest = 0, None
+    for price in data[1:]:
+        if cheapest is not None:
+            best = max(best, price - cheapest)
+        cheapest = price if cheapest is None else min(cheapest, price)
+    return f"{best}\n"
+
+
+def solve_distinct(text):
+    data = list(map(int, text.split()))
+    last, start, best = {}, 0, 0
+    for i, x in enumerate(data[1:]):
+        if last.get(x, -1) >= start:
+            start = last[x] + 1
+        last[x] = i
+        best = max(best, i - start + 1)
+    return f"{best}\n"
+
+
+def solve_range_count(text):
+    data = list(map(int, text.split()))
+    n, q = data[0], data[1]
+    values = sorted(data[2:2 + n])
+    out = []
+    for k in range(q):
+        a, b = data[2 + n + 2 * k], data[3 + n + 2 * k]
+        out.append(bisect.bisect_right(values, b) - bisect.bisect_left(values, a))
+    return "".join(f"{c}\n" for c in out)
+
+
+def solve_intervals(text):
+    data = list(map(int, text.split()))
+    n = data[0]
+    spans = sorted(zip(data[1:1 + 2 * n:2], data[2:2 + 2 * n:2]))
+    blocks, covered = 0, 0
+    current_l, current_r = None, None
+    for l, r in spans:
+        if current_r is None or l > current_r:
+            if current_r is not None:
+                blocks += 1
+                covered += current_r - current_l
+            current_l, current_r = l, r
+        else:
+            current_r = max(current_r, r)
+    blocks += 1
+    covered += current_r - current_l
+    return f"{blocks} {covered}\n"
+
+
+def solve_lis(text):
+    data = list(map(int, text.split()))
+    tails = []
+    for x in data[1:]:
+        k = bisect.bisect_left(tails, x)
+        if k == len(tails):
+            tails.append(x)
+        else:
+            tails[k] = x
+    return f"{len(tails)}\n"
+
+
+def solve_groups(text):
+    data = list(map(int, text.split()))
+    n, m = data[0], data[1]
+    parent = list(range(n + 1))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    groups = n
+    for k in range(m):
+        a, b = find(data[2 + 2 * k]), find(data[3 + 2 * k])
+        if a != b:
+            parent[a] = b
+            groups -= 1
+    return f"{groups}\n"
+
+
+def solve_rectangle(text):
+    data = list(map(int, text.split()))
+    heights = data[1:] + [0]
+    stack, best = [], 0
+    for i, h in enumerate(heights):
+        start = i
+        while stack and stack[-1][1] >= h:
+            start, top = stack.pop()
+            best = max(best, top * (i - start))
+        stack.append((start, h))
+    return f"{best}\n"
 
 
 # ---------- test inputs ----------
@@ -214,6 +323,138 @@ def shortest_path_tests():
     return tests
 
 
+def numbers_line(values):
+    return " ".join(map(str, values))
+
+
+def balance_case(n, has_point=True):
+    values = [rng.randint(-10**6, 10**6) for _ in range(n)]
+    if has_point and n >= 3:
+        # Put the balance point near the end and move the numbers after it until both sides
+        # match, so checking every position by adding up both sides costs about n^2 steps
+        p = n - max(1, n // 10) - 1
+        diff = sum(values[:p]) - sum(values[p + 1:])
+        # Raise the right side first; if it cannot take all of it, lower the left side
+        for k, sign in [(k, 1) for k in range(p + 1, n)] + [(k, -1) for k in range(p)]:
+            if diff == 0:
+                break
+            want = diff * sign
+            step = max(-10**6 - values[k], min(10**6 - values[k], want))
+            values[k] += step
+            diff -= step * sign
+        assert diff == 0
+    return f"{n}\n{numbers_line(values)}\n"
+
+
+def balance_tests():
+    tests = ["1\n5\n", "2\n0 0\n", "3\n1 2 3\n", "5\n-1 3 2 -4 1\n", "4\n0 0 0 0\n"]
+    tests += [balance_case(n) for n in (10, 100, 1000)] + [balance_case(500, has_point=False)]
+    tests += [balance_case(n) for n in ladder(1024, 131072)]
+    return tests
+
+
+def stock_tests():
+    tests = ["1\n5\n", "2\n5 3\n", "2\n3 5\n", "5\n9 7 5 3 1\n", "6\n3 3 3 3 3 3\n"]
+    tests += [f"{n}\n{numbers_line(rng.randint(1, 10**6) for _ in range(n))}\n" for n in (10, 100, 1000)]
+    # Prices drift down with noise, so the best trade is short and a cheapest-so-far scan
+    # cannot stop early
+    for n in ladder(1024, 131072):
+        prices = [max(1, 10**6 - i * (10**6 // n) + rng.randint(-5000, 5000)) for i in range(n)]
+        tests.append(f"{n}\n{numbers_line(prices)}\n")
+    return tests
+
+
+def distinct_case(n, repeats):
+    values = rng.sample(range(1, 10**9), n)
+    # A few repeats spread out, so the longest distinct stretch is long and trying every start
+    # costs about n^2 steps
+    for _ in range(repeats):
+        i = rng.randrange(n)
+        j = min(n - 1, i + rng.randint(1, max(1, n // 3)))
+        values[j] = values[i]
+    return f"{n}\n{numbers_line(values)}\n"
+
+
+def distinct_tests():
+    tests = ["1\n7\n", "4\n1 1 1 1\n", "5\n1 2 3 2 1\n", "6\n5 1 2 3 4 5\n"]
+    tests += [f"{n}\n{numbers_line(rng.randint(1, 20) for _ in range(n))}\n" for n in (30, 1000)]
+    tests += [distinct_case(n, 6) for n in (100, 1000)]
+    tests += [distinct_case(n, 6) for n in ladder(1024, 131072)]
+    return tests
+
+
+def range_count_case(n, q, hi):
+    values = [rng.randint(0, hi) for _ in range(n)]
+    queries = []
+    for _ in range(q):
+        a, b = sorted((rng.randint(0, hi), rng.randint(0, hi)))
+        queries.append(f"{a} {b}\n")
+    return f"{n} {q}\n{numbers_line(values)}\n" + "".join(queries)
+
+
+def range_count_tests():
+    tests = ["1 1\n5\n5 5\n", "3 2\n1 1 1\n0 0\n1 1\n", "5 3\n4 1 3 1 5\n2 4\n1 5\n6 9\n"]
+    tests += [range_count_case(20, 20, 10), range_count_case(1000, 500, 10**9)]
+    tests += [range_count_case(n, n // 2, 10**6) for n in ladder(2048, 131072)]
+    return tests
+
+
+def interval_case(n, hi, length):
+    spans = []
+    for _ in range(n):
+        l = rng.randint(0, hi - 1)
+        spans.append(f"{l} {min(hi, l + rng.randint(1, length))}")
+    return f"{n}\n" + "\n".join(spans) + "\n"
+
+
+def interval_tests():
+    tests = ["1\n0 10\n", "2\n0 5\n5 10\n", "2\n0 5\n6 10\n", "3\n1 9\n2 3\n4 5\n",
+             "3\n0 1000000000\n0 1000000000\n500 600\n"]
+    tests += [interval_case(10, 100, 10), interval_case(1000, 10**6, 300)]
+    # Short intervals over a wide range: most stay separate, so merging pairs one at a time
+    # takes many rounds
+    tests += [interval_case(n, 10**9, 2000) for n in ladder(1024, 65536)]
+    return tests
+
+
+def lis_tests():
+    tests = ["1\n5\n", "5\n1 2 3 4 5\n", "5\n5 4 3 2 1\n", "6\n2 2 2 2 2 2\n", "8\n0 8 4 12 2 10 6 14\n"]
+    tests += [f"{n}\n{numbers_line(rng.randint(1, 10**6) for _ in range(n))}\n" for n in (100, 1000)]
+    tests += [f"{n}\n{numbers_line(rng.randint(1, 10**6) for _ in range(n))}\n" for n in ladder(1024, 131072)]
+    return tests
+
+
+def groups_case(n, m, chain):
+    pairs = []
+    if chain:
+        # One long line of friends: deep recursion, and naive merging makes long trees
+        order = list(range(1, n + 1))
+        rng.shuffle(order)
+        pairs = [(order[i], order[i + 1]) for i in range(n - 1)][:m]
+    while len(pairs) < m:
+        pairs.append((rng.randint(1, n), rng.randint(1, n)))
+    rng.shuffle(pairs)
+    return f"{n} {m}\n" + "".join(f"{a} {b}\n" for a, b in pairs)
+
+
+def groups_tests():
+    tests = ["1 0\n", "3 0\n", "3 1\n1 2\n", "4 3\n1 2\n2 1\n3 3\n", "5 4\n1 2\n2 3\n3 4\n4 5\n"]
+    tests += [groups_case(100, 60, False), groups_case(1000, 900, True)]
+    tests += [groups_case(n, n - n // 64, True) for n in ladder(1024, 65536)]
+    return tests
+
+
+def rectangle_tests():
+    tests = ["1\n5\n", "2\n2 4\n", "6\n2 1 5 6 2 3\n", "5\n0 0 0 0 0\n", "3\n1000000000 1000000000 1000000000\n"]
+    tests += [f"{n}\n{numbers_line(rng.randint(0, 10**4) for _ in range(n))}\n" for n in (100, 1000)]
+    tests.append(f"50000\n{numbers_line([7] * 50000)}\n")
+    # Rising with noise: growing a rectangle outwards from every bar costs about n^2 steps
+    for n in ladder(1024, 131072):
+        heights = [i * (10**6 // n) + rng.randint(0, 10**6 // n) for i in range(n)]
+        tests.append(f"{n}\n{numbers_line(heights)}\n")
+    return tests
+
+
 # ---------- problems ----------
 
 PROBLEMS = [
@@ -309,6 +550,130 @@ PROBLEMS = [
         "tests": shortest_path_tests(),
         "solve": solve_shortest_paths,
     },
+    {
+        "slug": "balance-point",
+        "title": "Balance Point",
+        "difficulty": "Easy",
+        "statement": "Find the first position in the array where the sum of the numbers to its left "
+                     "equals the sum of the numbers to its right. The number at that position "
+                     "belongs to neither side, and an empty side adds up to 0.\n\n"
+                     "The sums can be larger than a 32-bit integer.",
+        "input": "The first line has `n`. The second line has the `n` integers.",
+        "output": "Print the first such position (0-based), or `-1` if there is none.",
+        "constraints": "1 <= n <= 131072\n-10^6 <= values <= 10^6",
+        "complexity": "O(n)",
+        "samples": ["6\n1 7 3 6 5 6\n", "3\n1 2 3\n", "3\n2 1 -1\n"],
+        "tests": balance_tests(),
+        "solve": solve_balance,
+    },
+    {
+        "slug": "stock-profit",
+        "title": "Stock Profit",
+        "difficulty": "Easy",
+        "statement": "You know a stock's price for each of the next `n` days. Buy one share on one day "
+                     "and sell it on a later day. What is the largest profit you can make? If every "
+                     "trade loses money, do not trade: the profit is 0.",
+        "input": "The first line has `n`. The second line has the `n` prices, in order of days.",
+        "output": "Print the largest profit.",
+        "constraints": "1 <= n <= 131072\n1 <= price <= 10^6",
+        "complexity": "O(n)",
+        "samples": ["6\n7 1 5 3 6 4\n", "5\n7 6 4 3 1\n"],
+        "tests": stock_tests(),
+        "solve": solve_stock,
+    },
+    {
+        "slug": "longest-distinct-stretch",
+        "title": "Longest Distinct Stretch",
+        "difficulty": "Medium",
+        "statement": "Find the length of the longest contiguous part of the array in which no number "
+                     "appears twice.",
+        "input": "The first line has `n`. The second line has the `n` integers.",
+        "output": "Print the length of the longest stretch.",
+        "constraints": "1 <= n <= 131072\n1 <= values <= 10^9",
+        "complexity": "O(n)",
+        "samples": ["8\n3 1 4 1 5 9 2 6\n", "5\n2 2 2 2 2\n"],
+        "tests": distinct_tests(),
+        "solve": solve_distinct,
+    },
+    {
+        "slug": "count-in-range",
+        "title": "Count in Range",
+        "difficulty": "Medium",
+        "statement": "You are given `n` numbers and `q` questions. Each question gives a range "
+                     "`a b` and asks how many of the numbers are at least `a` and at most `b`.",
+        "input": "The first line has `n` and `q`. The second line has the `n` numbers. Each of the "
+                 "next `q` lines has a question `a b`.",
+        "output": "Print `q` lines: the answer to each question, in order.",
+        "constraints": "1 <= n <= 131072\n1 <= q <= 65536\n0 <= numbers <= 10^6\n0 <= a <= b <= 10^6",
+        "complexity": "O((n + q) log n)",
+        "samples": ["5 3\n4 1 3 1 5\n2 4\n1 1\n6 9\n"],
+        "tests": range_count_tests(),
+        "solve": solve_range_count,
+    },
+    {
+        "slug": "covered-length",
+        "title": "Covered Length",
+        "difficulty": "Medium",
+        "statement": "Painters each paint a stretch of a long wall, from position `l` to position "
+                     "`r`. Stretches may overlap or touch. Joining all stretches that overlap or "
+                     "touch gives separate painted blocks. Count the blocks and the total painted "
+                     "length.",
+        "input": "The first line has `n`. Each of the next `n` lines has a stretch `l r`.",
+        "output": "Print the number of blocks and the total painted length.",
+        "constraints": "1 <= n <= 65536\n0 <= l < r <= 10^9",
+        "complexity": "O(n log n)",
+        "samples": ["4\n1 3\n2 6\n8 10\n10 12\n", "2\n0 5\n1 2\n"],
+        "tests": interval_tests(),
+        "solve": solve_intervals,
+    },
+    {
+        "slug": "longest-increasing-subsequence",
+        "title": "Longest Increasing Subsequence",
+        "difficulty": "Medium",
+        "statement": "Pick some numbers from the array, keeping their order, so that each picked "
+                     "number is strictly larger than the one before. What is the most numbers you "
+                     "can pick?",
+        "input": "The first line has `n`. The second line has the `n` integers.",
+        "output": "Print the length of the longest increasing subsequence.",
+        "constraints": "1 <= n <= 131072\n1 <= values <= 10^6",
+        "complexity": "O(n log n)",
+        "samples": ["8\n10 9 2 5 3 7 101 18\n", "4\n7 7 7 7\n"],
+        "tests": lis_tests(),
+        "solve": solve_lis,
+    },
+    {
+        "slug": "friend-groups",
+        "title": "Friend Groups",
+        "difficulty": "Medium",
+        "statement": "There are `n` people, numbered 1 to `n`, and a list of friendships. Friends of "
+                     "friends are in the same group, however long the chain. How many groups are "
+                     "there? Someone with no friends is a group on their own.\n\n"
+                     "One chain of friends can include everyone, so deep recursion may run out of "
+                     "stack.",
+        "input": "The first line has `n` and `m`. Each of the next `m` lines has two people `a b` "
+                 "who are friends.",
+        "output": "Print the number of groups.",
+        "constraints": "1 <= n <= 65536\n0 <= m <= 65536\n1 <= a, b <= n",
+        "complexity": "O(n + m)",
+        "samples": ["5 3\n1 2\n2 3\n4 5\n", "4 0\n"],
+        "tests": groups_tests(),
+        "solve": solve_groups,
+    },
+    {
+        "slug": "largest-rectangle",
+        "title": "Largest Rectangle",
+        "difficulty": "Hard",
+        "statement": "A skyline is made of `n` bars of width 1 standing side by side, with the given "
+                     "heights. Find the area of the largest rectangle that fits inside the skyline.\n\n"
+                     "The area can be larger than a 32-bit integer.",
+        "input": "The first line has `n`. The second line has the `n` heights.",
+        "output": "Print the largest area.",
+        "constraints": "1 <= n <= 131072\n0 <= height <= 10^9",
+        "complexity": "O(n)",
+        "samples": ["6\n2 1 5 6 2 3\n", "2\n2 4\n"],
+        "tests": rectangle_tests(),
+        "solve": solve_rectangle,
+    },
 ]
 
 
@@ -324,7 +689,11 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for old in OUT.glob("*.txt"):
         old.unlink()
-    for position, problem in enumerate(PROBLEMS, start=1):
+    # Listed easiest first; within a difficulty, in the order they were added. (Tests are still
+    # generated in list order above, so adding a problem never changes another one's tests.)
+    rank = {"Easy": 0, "Medium": 1, "Hard": 2}
+    listed = sorted(PROBLEMS, key=lambda p: (rank[p["difficulty"]], PROBLEMS.index(p)))
+    for position, problem in enumerate(listed, start=1):
         parts = [
             f"title: {problem['title']}\n",
             f"difficulty: {problem['difficulty']}\n",
@@ -338,7 +707,7 @@ def main():
         parts += [test_block("sample", t, problem["solve"]) for t in problem["samples"]]
         parts += [test_block("test", t, problem["solve"]) for t in problem["tests"]]
         (OUT / f"{problem['slug']}.txt").write_text("".join(parts), encoding="utf-8", newline="\n")
-    (OUT / "index.txt").write_text("".join(p["slug"] + "\n" for p in PROBLEMS), encoding="utf-8", newline="\n")
+    (OUT / "index.txt").write_text("".join(p["slug"] + "\n" for p in listed), encoding="utf-8", newline="\n")
     print(f"wrote {len(PROBLEMS)} problems to {OUT}")
 
 

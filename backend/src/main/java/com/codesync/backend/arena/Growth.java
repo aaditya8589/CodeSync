@@ -1,5 +1,6 @@
 package com.codesync.backend.arena;
 
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -27,6 +28,8 @@ public record Growth(Kind kind, Double exponent, String summary, String detail) 
     static final double MIN_FIT_SPAN = 3.5;
     // Tests smaller than the problem's largest divided by this are examples, not part of the ladder
     static final long LADDER_FRACTION = 256;
+    // How many of the largest measurable tests the fit uses
+    static final int FIT_POINTS = 3;
     // A problem whose tests vary less than this in size has nothing to measure (e.g. "add two numbers")
     static final double MIN_LADDER_SPAN = 8.0;
 
@@ -47,6 +50,10 @@ public record Growth(Kind kind, Double exponent, String summary, String detail) 
         List<Point> measurable = finished.stream()
                 .filter(point -> point.size() > 0 && point.size() * LADDER_FRACTION >= largest)
                 .filter(point -> point.millis() - baseline >= MIN_EXCESS_MS)
+                // The largest tests only: on smaller ones the time is mostly reading the input,
+                // which is linear whatever the algorithm, and that pulls a quadratic fit down
+                .sorted(Comparator.comparingLong(Point::size).reversed())
+                .limit(FIT_POINTS)
                 .toList();
         long fitSmallest = measurable.stream().mapToLong(Point::size).min().orElse(0);
         long fitLargest = measurable.stream().mapToLong(Point::size).max().orElse(0);
@@ -54,7 +61,7 @@ public record Growth(Kind kind, Double exponent, String summary, String detail) 
         if (measurable.size() >= 3 && (double) fitLargest / fitSmallest >= MIN_FIT_SPAN) {
             double k = Math.max(0, Math.min(4, slope(measurable, baseline)));
             String detail = "Doubling the input multiplied the running time by about ×"
-                    + oneDecimal(Math.pow(2, k)) + " (measured over " + measurable.size() + " tests)."
+                    + oneDecimal(Math.pow(2, k)) + " (measured on the " + measurable.size() + " largest tests that finished)."
                     + (timedOutSize == null ? "" : " Then a test of " + bytes(timedOutSize) + " ran out of time.");
             return new Growth(Kind.MEASURED, Math.round(k * 10) / 10.0, label(k), detail);
         }
@@ -71,7 +78,7 @@ public record Growth(Kind kind, Double exponent, String summary, String detail) 
 
     static String label(double k) {
         if (k < 1.4) return "Grows about linearly (like O(n) or O(n log n))";
-        if (k < 1.7) return "Grows faster than linear (about O(n^1.5))";
+        if (k < 1.7) return "Grows faster than linear (between O(n) and O(n²))";
         if (k < 2.5) return "Grows about quadratically (like O(n²))";
         return "Grows like O(n³) or worse";
     }

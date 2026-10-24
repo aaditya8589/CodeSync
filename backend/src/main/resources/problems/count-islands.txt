@@ -1,6 +1,6 @@
 title: Count the Islands
 difficulty: Medium
-position: 5
+position: 7
 complexity: O(r * c)
 === statement
 A map is a grid of land `#` and water `.`. Land cells that touch up, down, left or right belong to the same island. Count the islands.
