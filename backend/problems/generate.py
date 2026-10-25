@@ -1,15 +1,22 @@
-"""Writes backend/src/main/resources/problems/*.txt: statements, examples and hidden tests.
+"""Writes the problem files: statements, examples and hidden tests.
 
 Expected outputs come from the reference solutions below, so they are correct by construction.
-Run from the repository root:  python tools/problems/generate.py
+The files are not kept in git (they are tens of megabytes of numbers); Maven runs this while
+building, into target/generated-resources/problems, and skips it when nothing changed.
+
+    python backend/problems/generate.py [--out DIR] [--force]
 """
+import argparse
 import bisect
+import hashlib
 import heapq
 import random
+import sys
 from collections import deque
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parents[2] / "backend" / "src" / "main" / "resources" / "problems"
+HERE = Path(__file__).resolve()
+DEFAULT_OUT = HERE.parents[1] / "target" / "generated-resources" / "problems"
 rng = random.Random(20261012)
 
 
@@ -201,6 +208,137 @@ def solve_rectangle(text):
     return f"{best}\n"
 
 
+def solve_halls(text):
+    data = list(map(int, text.split()))
+    n = data[0]
+    starts = sorted(data[1:1 + 2 * n:2])
+    ends = sorted(data[2:2 + 2 * n:2])
+    best = busy = j = 0
+    for s in starts:
+        # A hall freed at time t can take a lecture starting at t
+        while j < n and ends[j] <= s:
+            j += 1
+            busy -= 1
+        busy += 1
+        best = max(best, busy)
+    return f"{best}\n"
+
+
+def solve_coins(text):
+    data = list(map(int, text.split()))
+    n, amount, coins = data[0], data[1], data[2:]
+    big = amount + 1
+    best = [0] + [big] * amount
+    for value in range(1, amount + 1):
+        b = big
+        for c in coins:
+            if c <= value and best[value - c] + 1 < b:
+                b = best[value - c] + 1
+        best[value] = b
+    return f"{best[amount] if best[amount] <= amount else -1}\n"
+
+
+def solve_pairs(text):
+    data = list(map(int, text.split()))
+    n, k = data[0], data[1]
+    values = sorted(data[2:2 + n])
+    count, i, j = 0, 0, n - 1
+    while i < j:
+        if values[i] + values[j] <= k:
+            count += j - i
+            i += 1
+        else:
+            j -= 1
+    return f"{count}\n"
+
+
+def solve_ship(text):
+    data = list(map(int, text.split()))
+    n, days, weights = data[0], data[1], data[2:]
+
+    def days_needed(capacity):
+        used, load = 1, 0
+        for w in weights:
+            if load + w > capacity:
+                used += 1
+                load = 0
+            load += w
+        return used
+
+    lo, hi = max(weights), sum(weights)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if days_needed(mid) <= days:
+            hi = mid
+        else:
+            lo = mid + 1
+    return f"{lo}\n"
+
+
+def solve_courses(text):
+    data = list(map(int, text.split()))
+    n, m = data[0], data[1]
+    after = [[] for _ in range(n + 1)]
+    needs = [0] * (n + 1)
+    for k in range(m):
+        a, b = data[2 + 2 * k], data[3 + 2 * k]
+        after[a].append(b)
+        needs[b] += 1
+    ready = [v for v in range(1, n + 1) if needs[v] == 0]
+    heapq.heapify(ready)
+    order = []
+    while ready:
+        v = heapq.heappop(ready)
+        order.append(v)
+        for w in after[v]:
+            needs[w] -= 1
+            if needs[w] == 0:
+                heapq.heappush(ready, w)
+    if len(order) < n:
+        return "IMPOSSIBLE\n"
+    return " ".join(map(str, order)) + "\n"
+
+
+def solve_edit(text):
+    lines = text.split("\n")
+    a, b = lines[0].strip(), lines[1].strip()
+    previous = list(range(len(b) + 1))
+    for i in range(1, len(a) + 1):
+        current = [i] + [0] * len(b)
+        ai = a[i - 1]
+        for j in range(1, len(b) + 1):
+            if ai == b[j - 1]:
+                current[j] = previous[j - 1]
+            else:
+                current[j] = 1 + min(previous[j - 1], previous[j], current[j - 1])
+        previous = current
+    return f"{previous[len(b)]}\n"
+
+
+def solve_pattern(text):
+    lines = text.split("\n")
+    t, p = lines[0].strip(), lines[1].strip()
+    # Knuth-Morris-Pratt: overlapping matches count
+    fail = [0] * len(p)
+    k = 0
+    for i in range(1, len(p)):
+        while k and p[i] != p[k]:
+            k = fail[k - 1]
+        if p[i] == p[k]:
+            k += 1
+        fail[i] = k
+    count = k = 0
+    for ch in t:
+        while k and ch != p[k]:
+            k = fail[k - 1]
+        if ch == p[k]:
+            k += 1
+        if k == len(p):
+            count += 1
+            k = fail[k - 1]
+    return f"{count}\n"
+
+
 # ---------- test inputs ----------
 
 # Hidden tests double in size up to the largest one. The judge times every test, so from a
@@ -245,6 +383,15 @@ def two_sum_tests():
     tests += [two_sum_case(n, -50, 50) for n in (5, 8, 12)]
     tests += [two_sum_case(n, -10**9, 10**9) for n in (100, 500)]
     tests += [two_sum_case(n, -10**9, 10**9, late=True) for n in ladder(1024, 131072)]
+    # One step further up the ladder, so trying every pair runs out of time even on a fast
+    # machine. Built with its own random numbers so the other problems' tests stay the same; the
+    # only pair reaching the target is the two largest values, placed near the end.
+    extra = random.Random(262144)
+    n = 262144
+    values = [extra.randint(-10**9, 9 * 10**8) for _ in range(n)]
+    i, j = sorted(extra.sample(range(n - n // 10, n), 2))
+    values[i], values[j] = 10**9 - 1, 10**9 - 2
+    tests.append(f"{n} {2 * 10**9 - 3}\n{' '.join(map(str, values))}\n")
     return tests
 
 
@@ -455,6 +602,114 @@ def rectangle_tests():
     return tests
 
 
+def halls_case(n, overlap):
+    span = 10**9
+    length = max(1, span // n * overlap)
+    lines = []
+    for _ in range(n):
+        s = rng.randint(0, span - 1)
+        lines.append(f"{s} {min(span, s + rng.randint(1, length))}")
+    return f"{n}\n" + "\n".join(lines) + "\n"
+
+
+def halls_tests():
+    tests = ["1\n0 1\n", "2\n0 5\n5 10\n", "2\n0 5\n4 10\n", "3\n1 10\n2 3\n4 5\n", "4\n0 3\n0 3\n0 3\n3 6\n"]
+    tests += [halls_case(10, 3), halls_case(1000, 20)]
+    tests += [halls_case(n, 40) for n in ladder(1024, 131072)]
+    return tests
+
+
+def coins_case(n, amount, low=1, high=None, even=False):
+    high = high or amount
+    coins = set()
+    while len(coins) < n:
+        c = rng.randint(low, high)
+        coins.add(c * 2 if even else c)
+    coins = sorted(coins)
+    rng.shuffle(coins)
+    return f"{len(coins)} {amount}\n{' '.join(map(str, coins))}\n"
+
+
+def coins_tests():
+    tests = ["1 0\n5\n", "1 3\n2\n", "3 6\n1 3 4\n", "3 30\n1 10 25\n", "2 7\n2 4\n", "1 100000\n1\n"]
+    tests += [coins_case(5, 100, 1, 40), coins_case(10, 5000, 50, 900)]
+    tests += [coins_case(30, 50000, 200, 3000), coins_case(50, 50000, 1000, 5000), coins_case(50, 49999, 1, 2000, even=True)]
+    tests += [coins_case(40, 99991, 400, 9000), coins_case(3, 99999, 97, 103)]
+    return tests
+
+
+def pairs_tests():
+    tests = ["1 0\n5\n", "2 0\n-1 1\n", "2 0\n1 1\n", "4 5\n1 2 3 4\n", "5 -1\n-3 -3 -3 2 2\n"]
+    tests += [f"{n} {rng.randint(-10**9, 10**9)}\n{' '.join(str(rng.randint(-10**9, 10**9)) for _ in range(n))}\n" for n in (100, 1000)]
+    # k near the top: most pairs count, so the answer needs 64 bits on the largest tests
+    tests += [f"{n} {rng.randint(10**9, 15 * 10**8)}\n{' '.join(str(rng.randint(-10**9, 10**9)) for _ in range(n))}\n" for n in ladder(1024, 131072)]
+    return tests
+
+
+def ship_case(n, days):
+    weights = [rng.randint(1, 10**6) for _ in range(n)]
+    return f"{n} {days}\n{' '.join(map(str, weights))}\n"
+
+
+def ship_tests():
+    tests = ["1 1\n7\n", "3 3\n1 2 3\n", "3 1\n1 2 3\n", "5 2\n9 1 1 1 9\n", "4 10\n4 4 4 4\n"]
+    tests += [ship_case(100, 7), ship_case(1000, 1), ship_case(1000, 1000), ship_case(1000, 37)]
+    tests += [ship_case(n, max(2, n // 50)) for n in ladder(1024, 131072)]
+    return tests
+
+
+def courses_case(n, m, cycle=False):
+    order = list(range(1, n + 1))
+    rng.shuffle(order)
+    edges = set()
+    while len(edges) < m:
+        i, j = sorted(rng.sample(range(n), 2))
+        edges.add((order[i], order[j]))
+    edges = list(edges)
+    if cycle:
+        a, b = edges[rng.randrange(len(edges))]
+        edges.append((b, a))
+    rng.shuffle(edges)
+    return f"{n} {len(edges)}\n" + "".join(f"{a} {b}\n" for a, b in edges)
+
+
+def courses_tests():
+    tests = ["1 0\n", "3 0\n", "3 2\n3 1\n3 2\n", "2 2\n1 2\n2 1\n", "4 3\n4 3\n3 2\n2 1\n"]
+    tests += [courses_case(10, 12), courses_case(1000, 3000), courses_case(1000, 3000, cycle=True)]
+    tests += [courses_case(n, 2 * n) for n in ladder(1024, 65536)]
+    return tests
+
+
+def letters(n, alphabet):
+    return "".join(rng.choice(alphabet) for _ in range(n))
+
+
+def edit_tests():
+    tests = ["a\na\n", "a\nb\n", "horse\nros\n", "intention\nexecution\n", "abc\nabcabc\n", "kitten\nsitting\n"]
+    tests += [f"{letters(rng.randint(1, 50), 'ab')}\n{letters(rng.randint(1, 50), 'ab')}\n" for _ in range(3)]
+    for n in ladder(128, 2048):
+        a = letters(n, "abcd")
+        # A related string: some changes, so the distance is not just about the length
+        b = list(a)
+        for _ in range(n // 4):
+            b[rng.randrange(len(b))] = rng.choice("abcd")
+        tests.append(f"{a}\n{''.join(b)}\n")
+    return tests
+
+
+def pattern_tests():
+    tests = ["aaaa\naa\n", "abc\nabcd\n", "abababa\naba\n", "hello\nll\n", "a\na\n", "abc\nd\n"]
+    tests += [f"{letters(1000, 'ab')}\n{letters(3, 'ab')}\n", f"{letters(5000, 'ab')}\n{letters(12, 'ab')}\n"]
+    # Long runs of a's against a^(m-1) b: comparing from every position costs n * m
+    for n in ladder(2048, 262144):
+        m = n // 8
+        text = list("a" * n)
+        for _ in range(16):
+            text[rng.randrange(m, n)] = "b"
+        tests.append(f"{''.join(text)}\n{'a' * (m - 1)}b\n")
+    return tests
+
+
 # ---------- problems ----------
 
 PROBLEMS = [
@@ -470,7 +725,7 @@ PROBLEMS = [
         "constraints": "-10^18 <= a, b <= 10^18",
         "complexity": "O(1)",
         "samples": ["3 4\n", "-10 25\n"],
-        "tests": add_tests(),
+        "tests": lambda: add_tests(),
         "solve": solve_add,
     },
     {
@@ -481,10 +736,10 @@ PROBLEMS = [
                      "positions whose values add up to `target`. Exactly one such pair exists.",
         "input": "The first line has `n` and `target`. The second line has the `n` integers.",
         "output": "Print the two positions `i j` (0-based, with `i < j`).",
-        "constraints": "2 <= n <= 131072\n-10^9 <= values <= 10^9\nExactly one pair adds up to target.",
+        "constraints": "2 <= n <= 262144\n-10^9 <= values <= 10^9\nExactly one pair adds up to target.",
         "complexity": "O(n)",
         "samples": ["4 9\n2 7 11 15\n", "3 6\n3 2 4\n"],
-        "tests": two_sum_tests(),
+        "tests": lambda: two_sum_tests(),
         "solve": solve_two_sum,
     },
     {
@@ -499,7 +754,7 @@ PROBLEMS = [
         "constraints": "1 <= length <= 262144",
         "complexity": "O(n)",
         "samples": ["()[]{}\n", "([)]\n", "{[]}\n"],
-        "tests": bracket_tests(),
+        "tests": lambda: bracket_tests(),
         "solve": solve_brackets,
     },
     {
@@ -514,7 +769,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 131072\n-10^9 <= values <= 10^9",
         "complexity": "O(n)",
         "samples": ["9\n-2 1 -3 4 -1 2 1 -5 4\n", "3\n-3 -1 -2\n"],
-        "tests": max_subarray_tests(),
+        "tests": lambda: max_subarray_tests(),
         "solve": solve_max_subarray,
     },
     {
@@ -531,7 +786,7 @@ PROBLEMS = [
         "constraints": "1 <= r, c <= 512",
         "complexity": "O(r * c)",
         "samples": ["4 5\n##...\n##..#\n....#\n.#.##\n", "3 3\n...\n...\n...\n"],
-        "tests": island_tests(),
+        "tests": lambda: island_tests(),
         "solve": solve_islands,
     },
     {
@@ -547,7 +802,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 65536\n0 <= m <= 131072\n0 <= w <= 10^6",
         "complexity": "O((n + m) log n)",
         "samples": ["4 4\n1 2 3\n2 3 4\n1 3 10\n3 4 1\n", "3 1\n1 2 7\n"],
-        "tests": shortest_path_tests(),
+        "tests": lambda: shortest_path_tests(),
         "solve": solve_shortest_paths,
     },
     {
@@ -563,7 +818,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 131072\n-10^6 <= values <= 10^6",
         "complexity": "O(n)",
         "samples": ["6\n1 7 3 6 5 6\n", "3\n1 2 3\n", "3\n2 1 -1\n"],
-        "tests": balance_tests(),
+        "tests": lambda: balance_tests(),
         "solve": solve_balance,
     },
     {
@@ -578,7 +833,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 131072\n1 <= price <= 10^6",
         "complexity": "O(n)",
         "samples": ["6\n7 1 5 3 6 4\n", "5\n7 6 4 3 1\n"],
-        "tests": stock_tests(),
+        "tests": lambda: stock_tests(),
         "solve": solve_stock,
     },
     {
@@ -592,7 +847,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 131072\n1 <= values <= 10^9",
         "complexity": "O(n)",
         "samples": ["8\n3 1 4 1 5 9 2 6\n", "5\n2 2 2 2 2\n"],
-        "tests": distinct_tests(),
+        "tests": lambda: distinct_tests(),
         "solve": solve_distinct,
     },
     {
@@ -607,7 +862,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 131072\n1 <= q <= 65536\n0 <= numbers <= 10^6\n0 <= a <= b <= 10^6",
         "complexity": "O((n + q) log n)",
         "samples": ["5 3\n4 1 3 1 5\n2 4\n1 1\n6 9\n"],
-        "tests": range_count_tests(),
+        "tests": lambda: range_count_tests(),
         "solve": solve_range_count,
     },
     {
@@ -623,7 +878,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 65536\n0 <= l < r <= 10^9",
         "complexity": "O(n log n)",
         "samples": ["4\n1 3\n2 6\n8 10\n10 12\n", "2\n0 5\n1 2\n"],
-        "tests": interval_tests(),
+        "tests": lambda: interval_tests(),
         "solve": solve_intervals,
     },
     {
@@ -638,7 +893,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 131072\n1 <= values <= 10^6",
         "complexity": "O(n log n)",
         "samples": ["8\n10 9 2 5 3 7 101 18\n", "4\n7 7 7 7\n"],
-        "tests": lis_tests(),
+        "tests": lambda: lis_tests(),
         "solve": solve_lis,
     },
     {
@@ -656,7 +911,7 @@ PROBLEMS = [
         "constraints": "1 <= n <= 65536\n0 <= m <= 65536\n1 <= a, b <= n",
         "complexity": "O(n + m)",
         "samples": ["5 3\n1 2\n2 3\n4 5\n", "4 0\n"],
-        "tests": groups_tests(),
+        "tests": lambda: groups_tests(),
         "solve": solve_groups,
     },
     {
@@ -671,8 +926,122 @@ PROBLEMS = [
         "constraints": "1 <= n <= 131072\n0 <= height <= 10^9",
         "complexity": "O(n)",
         "samples": ["6\n2 1 5 6 2 3\n", "2\n2 4\n"],
-        "tests": rectangle_tests(),
+        "tests": lambda: rectangle_tests(),
         "solve": solve_rectangle,
+    },
+    {
+        "slug": "lecture-halls",
+        "title": "Lecture Halls",
+        "difficulty": "Medium",
+        "statement": "Each lecture runs from time `s` up to time `e`. Two lectures that overlap need "
+                     "different halls; a hall freed at time `t` can take a lecture starting at `t`. "
+                     "What is the smallest number of halls that fits every lecture?",
+        "input": "The first line has `n`. Each of the next `n` lines has a lecture `s e`.",
+        "output": "Print the smallest number of halls.",
+        "constraints": "1 <= n <= 131072\n0 <= s < e <= 10^9",
+        "complexity": "O(n log n)",
+        "samples": ["3\n0 30\n5 10\n15 20\n", "2\n7 10\n2 4\n"],
+        "tests": lambda: halls_tests(),
+        "solve": solve_halls,
+    },
+    {
+        "slug": "coin-change",
+        "title": "Coin Change",
+        "difficulty": "Medium",
+        "statement": "You have coins of `n` different values and as many of each as you like. Pay "
+                     "exactly `amount` with as few coins as possible.\n\n"
+                     "Taking the largest coin first does not always work: with coins 1, 3 and 4, "
+                     "the best way to pay 6 is 3 + 3.",
+        "input": "The first line has `n` and `amount`. The second line has the `n` coin values.",
+        "output": "Print the smallest number of coins, or `-1` if the amount cannot be paid exactly.",
+        "constraints": "1 <= n <= 50\n0 <= amount <= 10^5\n1 <= coin <= 10^5\nn * amount <= 4 * 10^6",
+        "complexity": "O(n * amount)",
+        "samples": ["3 11\n1 2 5\n", "1 3\n2\n", "3 6\n1 3 4\n"],
+        "tests": lambda: coins_tests(),
+        "solve": solve_coins,
+    },
+    {
+        "slug": "pair-count",
+        "title": "Pair Count",
+        "difficulty": "Medium",
+        "statement": "Count the pairs of different positions `i < j` whose values add up to at "
+                     "most `k`.\n\n"
+                     "The count can be larger than a 32-bit integer.",
+        "input": "The first line has `n` and `k`. The second line has the `n` integers.",
+        "output": "Print the number of pairs.",
+        "constraints": "1 <= n <= 131072\n-10^9 <= values <= 10^9\n-2 * 10^9 <= k <= 2 * 10^9",
+        "complexity": "O(n log n)",
+        "samples": ["4 5\n1 2 3 4\n", "3 0\n5 5 5\n"],
+        "tests": lambda: pairs_tests(),
+        "solve": solve_pairs,
+    },
+    {
+        "slug": "ship-capacity",
+        "title": "Ship Capacity",
+        "difficulty": "Medium",
+        "statement": "Packages wait in a line and must be shipped in that order, within `d` days. "
+                     "Each day the ship takes packages from the front of the line until the next "
+                     "one would make the load heavier than its capacity. What is the smallest "
+                     "capacity that ships everything in `d` days?",
+        "input": "The first line has `n` and `d`. The second line has the `n` package weights, "
+                 "in order.",
+        "output": "Print the smallest capacity.",
+        "constraints": "1 <= n <= 131072\n1 <= d <= n\n1 <= weight <= 10^6",
+        "complexity": "O(n log(sum of weights))",
+        "samples": ["10 5\n1 2 3 4 5 6 7 8 9 10\n", "3 3\n3 2 2\n"],
+        "tests": lambda: ship_tests(),
+        "solve": solve_ship,
+    },
+    {
+        "slug": "course-order",
+        "title": "Course Order",
+        "difficulty": "Medium",
+        "statement": "Courses are numbered 1 to `n`. Some must be taken before others. Find an "
+                     "order to take all of them. When several courses could come next, always "
+                     "take the one with the smallest number, so the answer is unique.",
+        "input": "The first line has `n` and `m`. Each of the next `m` lines has `a b`: course `a` "
+                 "must be taken before course `b`.",
+        "output": "Print the order as `n` numbers on one line, or `IMPOSSIBLE` if the "
+                  "requirements go round in a circle.",
+        "constraints": "1 <= n <= 65536\n0 <= m <= 131072\n1 <= a, b <= n",
+        "complexity": "O((n + m) log n)",
+        "samples": ["4 3\n2 1\n3 1\n4 3\n", "2 2\n1 2\n2 1\n"],
+        "tests": lambda: courses_tests(),
+        "solve": solve_courses,
+    },
+    {
+        "slug": "edit-distance",
+        "title": "Edit Distance",
+        "difficulty": "Hard",
+        "statement": "Change the first word into the second one. Each step inserts one letter, "
+                     "deletes one letter, or replaces one letter with another. What is the "
+                     "smallest number of steps?\n\n"
+                     "The work here grows with the product of the two lengths, so the judge sees "
+                     "the time grow about four times when both words double. That is expected.",
+        "input": "Two lines, each with a word of lowercase letters.",
+        "output": "Print the smallest number of steps.",
+        "constraints": "1 <= length of each word <= 2048",
+        "complexity": "O(n * m)",
+        "samples": ["horse\nros\n", "intention\nexecution\n"],
+        "tests": lambda: edit_tests(),
+        "solve": solve_edit,
+    },
+    {
+        "slug": "pattern-count",
+        "title": "Pattern Count",
+        "difficulty": "Hard",
+        "statement": "Count how many times the pattern appears in the text. Appearances may "
+                     "overlap: `aa` appears 3 times in `aaaa`.\n\n"
+                     "Comparing the pattern at every position can take `n * m` steps when the text "
+                     "and the pattern are long and nearly match everywhere.",
+        "input": "The first line has the text, the second line the pattern, both of lowercase "
+                 "letters.",
+        "output": "Print the number of appearances.",
+        "constraints": "1 <= length of text <= 262144\n1 <= length of pattern <= 262144",
+        "complexity": "O(n + m)",
+        "samples": ["abababa\naba\n", "hello\nworld\n"],
+        "tests": lambda: pattern_tests(),
+        "solve": solve_pattern,
     },
 ]
 
@@ -686,11 +1055,28 @@ def test_block(kind, text, solve):
 
 
 def main():
-    OUT.mkdir(parents=True, exist_ok=True)
-    for old in OUT.glob("*.txt"):
+    parser = argparse.ArgumentParser(description="Writes the problem files")
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="folder to write into")
+    parser.add_argument("--force", action="store_true", help="write even if nothing changed")
+    args = parser.parse_args()
+    out = args.out.resolve()
+
+    # The files depend only on this script (the random seed is fixed), so its hash says
+    # whether the files already there are current
+    stamp = hashlib.sha256(HERE.read_bytes()).hexdigest()
+    stamp_file = out / ".generated-by"
+    if not args.force and stamp_file.is_file() and stamp_file.read_text().strip() == stamp \
+            and (out / "index.txt").is_file():
+        print(f"problems are up to date in {out}")
+        return
+
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("*.txt"):
         old.unlink()
-    # Listed easiest first; within a difficulty, in the order they were added. (Tests are still
-    # generated in list order above, so adding a problem never changes another one's tests.)
+    # Tests are made in list order, so adding a problem never changes another one's tests;
+    # they are listed easiest first, within a difficulty in the order they were added
+    for problem in PROBLEMS:
+        problem["tests"] = problem["tests"]()
     rank = {"Easy": 0, "Medium": 1, "Hard": 2}
     listed = sorted(PROBLEMS, key=lambda p: (rank[p["difficulty"]], PROBLEMS.index(p)))
     for position, problem in enumerate(listed, start=1):
@@ -706,10 +1092,13 @@ def main():
         ]
         parts += [test_block("sample", t, problem["solve"]) for t in problem["samples"]]
         parts += [test_block("test", t, problem["solve"]) for t in problem["tests"]]
-        (OUT / f"{problem['slug']}.txt").write_text("".join(parts), encoding="utf-8", newline="\n")
-    (OUT / "index.txt").write_text("".join(p["slug"] + "\n" for p in listed), encoding="utf-8", newline="\n")
-    print(f"wrote {len(PROBLEMS)} problems to {OUT}")
+        (out / f"{problem['slug']}.txt").write_text("".join(parts), encoding="utf-8", newline="\n")
+    (out / "index.txt").write_text("".join(p["slug"] + "\n" for p in listed), encoding="utf-8", newline="\n")
+    stamp_file.write_text(stamp + "\n", encoding="utf-8")
+    print(f"wrote {len(PROBLEMS)} problems to {out}")
 
 
 if __name__ == "__main__":
+    if sys.version_info < (3, 9):
+        sys.exit("generate.py needs Python 3.9 or newer")
     main()

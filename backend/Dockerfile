@@ -1,10 +1,13 @@
 # Build the jar
 FROM eclipse-temurin:21-jdk AS build
+# The build generates the problems' hidden tests with Python
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
 # Dependencies in their own layer, so changing code does not download them again
 RUN ./mvnw -B -q dependency:go-offline
+COPY problems problems
 COPY src src
 # Tests run in CI; the image only packages
 RUN ./mvnw -B -q package -DskipTests

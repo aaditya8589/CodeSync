@@ -82,7 +82,10 @@ function OutputPanel({ state }: { state: RunState }) {
 function GrowthReport({ result }: { result: JudgeResult }) {
   const { growth, expectedComplexity } = result
   if (!growth) return null
-  const slow = growth.kind === "TIMED_OUT" || (growth.exponent !== null && growth.exponent >= 1.4)
+  // An accepted solution is fast enough, even when its growth is quadratic by nature (like a
+  // table over two strings); otherwise fast growth is worth pointing out
+  const slow = result.verdict !== "ACCEPTED"
+    && (growth.kind === "TIMED_OUT" || (growth.exponent !== null && growth.exponent >= 1.4))
   return (
     <section className={`judge__growth${slow ? " judge__growth--slow" : ""}`} aria-label="Time complexity">
       <p className="judge__growth-summary">
