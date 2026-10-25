@@ -46,6 +46,16 @@ public class Problem {
     @Column(name = "content_hash", length = 64)
     private String contentHash;
 
+    // Mock interviews: for the interviewer only, never in the problem's public view
+    @Column(name = "interviewer_guide", columnDefinition = "TEXT")
+    private String interviewerGuide;
+
+    // Hints in the order they are given, separated by HINT_SEPARATOR
+    @Column(columnDefinition = "TEXT")
+    private String hints;
+
+    private static final String HINT_SEPARATOR = "\n\u001E\n";
+
     @OneToMany(mappedBy = "problem", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
     private List<TestCase> testCases = new ArrayList<>();
@@ -69,6 +79,16 @@ public class Problem {
     public String getExpectedComplexity() { return expectedComplexity; }
     public String getContentHash() { return contentHash; }
     public List<TestCase> getTestCases() { return testCases; }
+    public String getInterviewerGuide() { return interviewerGuide; }
+
+    public List<String> getHints() {
+        return hints == null || hints.isEmpty() ? List.of() : List.of(hints.split(HINT_SEPARATOR));
+    }
+
+    public void setInterviewMaterial(String guide, List<String> hintList) {
+        this.interviewerGuide = guide;
+        this.hints = hintList == null || hintList.isEmpty() ? null : String.join(HINT_SEPARATOR, hintList);
+    }
 
     public void update(String title, String difficulty, int position, String statement,
                        String inputFormat, String outputFormat, String constraints,

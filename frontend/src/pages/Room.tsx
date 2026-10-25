@@ -50,6 +50,8 @@ import {
   type MatchChangedMessage,
   type MatchSummary,
 } from "../services/matchService"
+import InterviewPanel from "../interview/InterviewPanel"
+import { getInterview, interviewLink, type Interview, type InterviewChangedMessage } from "../services/interviewService"
 import useCodeSync, {
   type FileChangeMessage,
   type RemoteCursor,
@@ -72,8 +74,8 @@ function Room() {
   const [copied, setCopied] = useState(false)
   const [problemSlug, setProblemSlug] = useState<string | null>(null)
   const [problem, setProblem] = useState<ProblemDetail | null>(null)
-  // The side panel: the room's problem, or the match
-  const [panel, setPanel] = useState<"problem" | "match" | null>(null)
+  // The side panel: the room's problem, the match, or the mock interview
+  const [panel, setPanel] = useState<"problem" | "match" | "interview" | null>(null)
   const problemOpen = panel === "problem"
   const setProblemOpen = (open: boolean | ((was: boolean) => boolean)) =>
     setPanel((current) => {
@@ -83,6 +85,8 @@ function Room() {
   // In a match room: its match. In an ordinary room: the match rooms made from it.
   const [match, setMatch] = useState<Match | null>(null)
   const [madeHere, setMadeHere] = useState<MatchSummary[]>([])
+  // In an interview room: the interview, as this user's role sees it
+  const [interview, setInterview] = useState<Interview | null>(null)
   // How far the server's clock is ahead of this browser's
   const [clockOffset, setClockOffset] = useState(0)
   // The latest thing that happened to the room's problem, from anyone in the room
@@ -122,7 +126,8 @@ function Room() {
         setRoom(roomData)
         setProblemSlug(roomData.problemSlug ?? null)
         // A match room opens on its contest; an ordinary one on its problem, if it has one
-        setPanel(roomData.kind === "MATCH" ? "match" : roomData.problemSlug ? "problem" : null)
+        setPanel(roomData.kind === "MATCH" ? "match" : roomData.kind === "INTERVIEW" ? "interview"
+          : roomData.problemSlug ? "problem" : null)
         setDocuments(docs)
         setActiveDocumentId(docs[0]?.id ?? "")
       } catch (error) {
@@ -232,10 +237,61 @@ function Room() {
 
   const roomKind = room?.kind ?? null
   const isMatchRoom = roomKind === "MATCH"
+  const isInterviewRoom = roomKind === "INTERVIEW"
+
+  // The room's problem is the interview's once revealed, which turns on Submit
+  const showInterview = useCallback((found: Interview) => {
+    setInterview(found)
+    setClockOffset(serverOffset(found.serverTime, Date.now()))
+    if (found.revealed && found.problem) setProblemSlug(found.problem.slug)
+  }, [])
+
+  const loadInterview = useCallback(async () => {
+    if (!roomId) return
+    try {
+      showInterview(await getInterview(roomId))
+    } catch {
+      // Keeps what it showed; the next change or reload brings it up to date
+    }
+  }, [roomId, showInterview])
+
+  useEffect(() => {
+    if (!isInterviewRoom || !roomId) return
+    let cancelled = false
+    getInterview(roomId).then((found) => { if (!cancelled) showInterview(found) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [isInterviewRoom, roomId, showInterview])
+
+  // The server ends the interview when time is up; ask again just after
+  useEffect(() => {
+    if (interview?.state !== "RUNNING" || !interview.endsAt) return
+    const wait = Date.parse(interview.endsAt) - (Date.now() + clockOffset) + 500
+    const timer = setTimeout(() => void loadInterview(), Math.max(0, wait))
+    return () => clearTimeout(timer)
+  }, [interview?.state, interview?.endsAt, clockOffset, loadInterview])
+
+  const handleInterviewChanged = useCallback((message: InterviewChangedMessage) => {
+    void loadInterview()
+    const news: Partial<Record<InterviewChangedMessage["event"], string>> = {
+      REQUESTED: `${message.username} asks to be the candidate`,
+      APPROVED: `${message.username} joined the interview`,
+      STARTED: "The interview has started",
+      REVEALED: "The problem is revealed",
+      HINT: "New hint in the interview panel",
+      ENDED: "The interview is over",
+      SCORED: "Your scorecard is ready",
+      SWAPPED: `${message.username} set up the next interview with roles swapped`,
+    }
+    if (message.username !== me && news[message.event]) {
+      setPanel("interview")
+      setRoomNews({ text: news[message.event]!, tone: "info" })
+    }
+  }, [loadInterview, me])
 
   useEffect(() => {
     if (!roomId || !roomKind) return
     let cancelled = false
+    if (roomKind === "INTERVIEW") return
     if (roomKind === "MATCH") {
       getMatch(roomId).then((found) => { if (!cancelled) showMatch(found) }).catch(() => {})
     } else {
@@ -339,13 +395,15 @@ function Room() {
   }, [me, showRename])
 
   const handleSubmission = useCallback((message: RoomSubmissionMessage) => {
+    // The interviewer's panel shows the candidate's latest result
+    if (isInterviewRoom) void loadInterview()
     if (message.username === me) return
     const verdict = message.verdict as Verdict
     setRoomNews({
       text: `${message.username} submitted ${message.fileName}: ${VERDICT_TEXT[verdict]} (${message.passed}/${message.total})`,
       tone: verdictTone(verdict),
     })
-  }, [me])
+  }, [me, isInterviewRoom, loadInterview])
 
   // Load the statement whenever the room's problem changes
   useEffect(() => {
@@ -368,6 +426,7 @@ function Room() {
     onSubmission: handleSubmission,
     onFileChange: handleFileChange,
     onMatchChanged: handleMatchChanged,
+    onInterviewChanged: handleInterviewChanged,
   })
 
   // A private match file's caret would tell other players where its owner is working, so it is
@@ -435,14 +494,14 @@ function Room() {
   // A match room is shared by its link (joining it by id is refused); an ordinary room by its id
   const copyRoomId = async () => {
     if (!roomId) return
-    const shared = isMatchRoom ? matchLink(roomId) : roomId
+    const shared = isMatchRoom ? matchLink(roomId) : isInterviewRoom ? interviewLink(roomId) : roomId
     try {
       await navigator.clipboard.writeText(shared)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
       // Clipboard blocked (e.g. plain http): show it so it can be copied by hand
-      window.prompt(isMatchRoom ? "Match link" : "Room ID", shared)
+      window.prompt(isMatchRoom ? "Match link" : isInterviewRoom ? "Interview link" : "Room ID", shared)
     }
   }
 
@@ -478,7 +537,7 @@ function Room() {
       <TopBar title={room.name}>
         <PresenceSeats members={members} me={me} />
         <button type="button" className="button" onClick={() => void copyRoomId()}>
-          {copied ? "Copied" : isMatchRoom ? "Copy match link" : "Copy room ID"}
+          {copied ? "Copied" : isMatchRoom ? "Copy match link" : isInterviewRoom ? "Copy interview link" : "Copy room ID"}
         </button>
       </TopBar>
 
@@ -511,14 +570,25 @@ function Room() {
               <span className={`room-news room-news--${roomNews.tone}`} role="status">{roomNews.text}</span>
             )}
             <div className="editor-bar__actions">
-              <MatchButton
-                match={match}
-                offset={clockOffset}
-                label={isMatchRoom ? "Match" : "Compete"}
-                pressed={panel === "match"}
-                onClick={() => setPanel((current) => current === "match" ? null : "match")}
-              />
-              {!isMatchRoom && (
+              {isInterviewRoom ? (
+                <button
+                  type="button"
+                  className="button button--quiet"
+                  aria-pressed={panel === "interview"}
+                  onClick={() => setPanel((current) => current === "interview" ? null : "interview")}
+                >
+                  Interview
+                </button>
+              ) : (
+                <MatchButton
+                  match={match}
+                  offset={clockOffset}
+                  label={isMatchRoom ? "Match" : "Compete"}
+                  pressed={panel === "match"}
+                  onClick={() => setPanel((current) => current === "match" ? null : "match")}
+                />
+              )}
+              {!isMatchRoom && !isInterviewRoom && (
                 <button
                   type="button"
                   className="button button--quiet"
@@ -614,7 +684,18 @@ function Room() {
             onClose={() => setPanel(null)}
           />
         )}
-        {panel === "match" && !isMatchRoom && (
+        {panel === "interview" && isInterviewRoom && roomId && (
+          <InterviewPanel
+            roomId={roomId}
+            interview={interview}
+            offset={clockOffset}
+            onChange={showInterview}
+            onSwapped={(next) => navigate(`/rooms/${next}`)}
+            onOpenHistory={() => setHistoryOpen(true)}
+            onClose={() => setPanel(null)}
+          />
+        )}
+        {panel === "match" && !isMatchRoom && !isInterviewRoom && (
           <CompetePanel matches={madeHere} onCreate={handleCreateMatch} onClose={() => setPanel(null)} />
         )}
 
@@ -623,7 +704,7 @@ function Room() {
             roomId={room.id}
             problem={shownProblem}
             openFile={activeDocument ? { id: activeDocument.id, fileName: activeDocument.fileName } : null}
-            tutorAllowed={!isMatchRoom}
+            tutorAllowed={!isMatchRoom && !isInterviewRoom}
             onChoose={(slug) => void chooseProblem(slug)}
             onClose={() => setProblemOpen(false)}
           />

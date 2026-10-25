@@ -9,7 +9,7 @@ export interface Room {
   // The problem the room is solving, if any
   problemSlug?: string | null
   // A MATCH room holds one contest: only the players' own files, entered through its link
-  kind?: "NORMAL" | "MATCH"
+  kind?: "NORMAL" | "MATCH" | "INTERVIEW"
 }
 
 export async function getMyRooms(): Promise<Room[]> {

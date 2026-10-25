@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Reads one problem from its text file (backend/src/main/resources/problems/*.txt):
+ * Reads one problem from its text file (made by backend/problems/generate.py):
  * "key: value" header lines, then sections that start with "=== name". Example and hidden
  * tests are "=== sample" / "=== test" sections whose expected output follows "--- expected".
  */
@@ -23,7 +23,11 @@ public record ProblemFile(
         String expectedComplexity,
         List<Test> tests,
         // Of the whole file, so an unchanged problem is not rewritten into the database
-        String contentHash
+        String contentHash,
+        // For the interviewer in a mock interview only: what a good answer looks like, and hints
+        // to give one at a time. Never shown with the problem or sent to the tutor.
+        String interviewerGuide,
+        List<String> hints
 ) {
 
     public record Test(boolean sample, String input, String expectedOutput) {
@@ -33,6 +37,7 @@ public record ProblemFile(
         Map<String, String> header = new LinkedHashMap<>();
         Map<String, String> sections = new LinkedHashMap<>();
         List<Test> tests = new ArrayList<>();
+        List<String> hints = new ArrayList<>();
 
         String[] lines = text.replace("\r\n", "\n").split("\n", -1);
         int i = 0;
@@ -57,7 +62,9 @@ public record ProblemFile(
                 }
             }
 
-            if (name.equals("sample") || name.equals("test")) {
+            if (name.equals("hint")) {
+                hints.add(body.toString().strip());
+            } else if (name.equals("sample") || name.equals("test")) {
                 if (expected == null) throw new IllegalArgumentException(slug + ": test without '--- expected'");
                 tests.add(new Test(name.equals("sample"), body.toString(), trimFinalNewline(expected.toString())));
             } else {
@@ -80,7 +87,9 @@ public record ProblemFile(
                 sections.getOrDefault("constraints", ""),
                 header.get("complexity"),
                 List.copyOf(tests),
-                sha256(text)
+                sha256(text),
+                sections.get("guide"),
+                List.copyOf(hints)
         );
     }
 

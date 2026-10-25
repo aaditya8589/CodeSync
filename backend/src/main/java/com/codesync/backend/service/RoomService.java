@@ -124,6 +124,10 @@ public class RoomService {
             throw new RoomAccessDeniedException(
                     "This is a match room: open its link and ask the host to let you in");
         }
+        if (room.isInterviewRoom()) {
+            throw new RoomAccessDeniedException(
+                    "This is a mock interview: open its link and ask the interviewer to let you in");
+        }
 
         if (roomMemberRepository.existsByRoomIdAndUserId(
                 roomId,

@@ -48,6 +48,7 @@ public class ProblemCatalog {
             problem.update(file.title(), file.difficulty(), file.position(), file.statement(),
                     file.inputFormat(), file.outputFormat(), file.constraints(),
                     file.expectedComplexity(), file.contentHash());
+            problem.setInterviewMaterial(file.interviewerGuide(), file.hints());
 
             problem.getTestCases().clear();
             for (int i = 0; i < file.tests().size(); i++) {

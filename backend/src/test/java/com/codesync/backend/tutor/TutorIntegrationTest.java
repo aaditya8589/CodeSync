@@ -12,6 +12,7 @@ import com.codesync.backend.entity.User;
 import com.codesync.backend.exception.InvalidRunRequestException;
 import com.codesync.backend.exception.RoomAccessDeniedException;
 import com.codesync.backend.exception.TutorUnavailableException;
+import com.codesync.backend.interview.InterviewService;
 import com.codesync.backend.match.MatchService;
 import com.codesync.backend.repository.DocumentRepository;
 import com.codesync.backend.repository.ProblemRepository;
@@ -78,6 +79,7 @@ class TutorIntegrationTest {
     @Autowired private ArenaService arenaService;
     @Autowired private RoomService roomService;
     @Autowired private MatchService matchService;
+    @Autowired private InterviewService interviewService;
     @Autowired private UserRepository userRepository;
     @Autowired private DocumentRepository documentRepository;
     @Autowired private ProblemRepository problemRepository;
@@ -228,5 +230,14 @@ class TutorIntegrationTest {
         assertEquals("NEW", progress.problems().stream()
                 .filter(p -> p.slug().equals("largest-rectangle")).findFirst().orElseThrow().status());
         assertEquals(0, arenaService.progress(outsider).difficulties().get(0).solved());
+    }
+
+    @Test
+    void theTutorIsOffInMockInterviews() {
+        UUID interviewRoom = UUID.fromString(interviewService.create("two-sum", null, 30, null, member).roomId());
+        String solution = documentRepository.findByRoomIdOrderByFileNameAsc(interviewRoom).get(0).getId().toString();
+        TutorUnavailableException off = assertThrows(TutorUnavailableException.class,
+                () -> tutorService.prepare(interviewRoom, new TutorRequest(solution, "NUDGE", null, List.of()), member));
+        assertTrue(off.getMessage().contains("mock interviews"));
     }
 }

@@ -46,6 +46,7 @@ function Dashboard() {
                     <Link to={`/rooms/${room.id}`}>
                       <span className="room-list__name">
                         {room.kind === "MATCH" && <span className="room-list__tag">Match</span>}
+                        {room.kind === "INTERVIEW" && <span className="room-list__tag">Interview</span>}
                         {room.name}
                       </span>
                       <span className="room-list__date">
@@ -59,6 +60,11 @@ function Dashboard() {
         </main>
 
         <aside className="side-forms">
+          <section className="side-form">
+            <h2>Mock interview</h2>
+            <p className="side-form__hint">Interview a friend on a problem: they code live, you watch, give hints and send a scorecard.</p>
+            <Link to="/interviews/new" className="button button--primary">New mock interview</Link>
+          </section>
           <section className="side-form">
             <h2>Compete</h2>
             <p className="side-form__hint">A timed match in its own room. Share the link, let players in, start the clock.</p>
