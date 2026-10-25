@@ -55,6 +55,16 @@ public class Submission {
     @Column(name = "match_id")
     private UUID matchId;
 
+    // What the tutor needs to talk about this attempt; empty on submissions from before the tutor
+    @Column(name = "failed_test")
+    private Integer failedTest;
+
+    @Column(name = "growth_summary", length = 200)
+    private String growthSummary;
+
+    @Column(name = "growth_detail", length = 400)
+    private String growthDetail;
+
     public Submission() {
     }
 
@@ -81,7 +91,20 @@ public class Submission {
         this.createdAt = submittedAt;
     }
 
+    public void recordDetails(Integer failedTest, String growthSummary, String growthDetail) {
+        this.failedTest = failedTest;
+        this.growthSummary = cut(growthSummary, 200);
+        this.growthDetail = cut(growthDetail, 400);
+    }
+
+    private static String cut(String text, int max) {
+        return text == null || text.length() <= max ? text : text.substring(0, max);
+    }
+
     public UUID getMatchId() { return matchId; }
+    public Integer getFailedTest() { return failedTest; }
+    public String getGrowthSummary() { return growthSummary; }
+    public String getGrowthDetail() { return growthDetail; }
     public Problem getProblem() { return problem; }
     public UUID getId() { return id; }
     public String getUsername() { return username; }

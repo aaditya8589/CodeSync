@@ -16,6 +16,8 @@ A real-time collaborative code editor: several people edit the same files at the
 - **Problems with a judge.** 14 original problems, from warm-ups to stacks, sliding windows, binary search, intervals, graphs and dynamic programming. Attach a problem to a room and its statement appears next to the code for everyone. Submit judges the open file on hidden tests (Accepted, Wrong answer on test 3, time or memory limit, runtime or compile error), and everyone in the room sees the verdict live.
 - **Time complexity from the judge's own clock.** Every problem names the complexity a good solution reaches (Two Sum: O(n)), and its hidden tests double in size up to 128K numbers or 1.3 MB of input, so a slower solution runs out of time on the largest ones. After a submission the judge fits the running times against the input sizes and says how the code grew: "Grows about quadratically (like O(n²)): doubling the input multiplied the running time by about ×4.0, then a test of 1.3 MB ran out of time".
 - **Compete mode.** A timed match (1-3 problems, 5-120 minutes) gets its own match room and a share link. Whoever opens the link asks to join and the host lets them in; the match waits in a lobby until the host starts everyone's clock at once. Every player gets a private file per problem that nobody else can see, run or read the history of until time is up; then all code is revealed. Live ICPC standings: most problems solved, then least time, with 5 minutes added per rejected try. A room's Compete button makes a match room and gives everyone in the room its link.
+- **AI tutor that never writes code.** Next to the problem, ask for a *Nudge*, the *Approach*, the *Steps* in plain words, a *Review* of your code, or ask a question. The tutor reads your open file and your last verdict, including how the judge measured your code's growth ("your two loops try every pair: that is why it grew about ×4 per doubling"), and answers as a stream. It explains ideas; you type every line. It is off during matches, never sees hidden tests, and each person has a daily allowance.
+- **Progress.** Solved and tried problems per difficulty, and every problem's status.
 - **Files.** Anyone in the room can add files (`.cpp`, `.py`, `.java`, `.txt`, ...), which start with a template for their language, and rename or delete them (F2 / Delete work too). Every change appears in everyone's file list immediately; a rename keeps the file's history and does not interrupt anyone typing in it.
 - **Sign in with Google** (optional) next to email and password. The backend verifies Google's ID token itself (signature against Google's published keys, issuer, audience, expiry) and then issues its own JWT, so the rest of the app is unchanged.
 - **Rooms and access control.** JWT authentication, room membership checked on every REST call, WebSocket subscription and edit.
@@ -65,6 +67,9 @@ flowchart LR
 | **ICPC scoring** | Ranking by runtime would be partly luck (milliseconds vary between runs), so the standings use problems solved, then minutes to each accepted solution plus 5 per rejected try. Compile errors cost nothing: the code never ran. |
 | **Problems as text files** | Problems live in `backend/src/main/resources/problems`, generated with reference solutions (`tools/problems/generate.py`) and loaded into the database at startup. An independent solution for every problem runs through the real judge in CI, so a wrong expected output would fail the build. The problems are written for CodeSync rather than copied from sites like LeetCode, whose hidden tests are not public and whose terms do not allow reuse. |
 | **Complexity measured, not guessed from the code** | Reading code cannot tell O(n) from O(n²) in general, but timing it on inputs of doubling size can. The judge already times every test, so the estimate costs nothing extra: a least-squares fit of log(time beyond start-up) against log(size). Only tests clearly slower than start-up count, and the first, tiny tests never do (a cold start once made a 14-byte example look slower than a 1 MB test); when too few count, the answer is "too fast to measure", not a guess. Calibrated against real Docker runs: a hash-map Two Sum reads as linear, trying every pair reads as ×4.0 per doubling and runs out of time. |
+| **"No code" enforced on the server, not only asked for** | The tutor's instructions forbid code, but a model can be talked round, so every answer streams through a filter on the server before anyone sees it: code blocks and lines that read as code in C++, Python or Java become one short note, and long inline code is cut. Short names like `dp[i]` stay, since explaining an idea needs them. |
+| **Tutor context built on the server** | The browser only sends which file, what kind of hint and the conversation so far. The server reads the problem, the file and the last submission itself, so nobody can feed the tutor hidden tests, someone else's private match file, or a made-up verdict. Off during a match, also for that match's problems in other rooms. |
+| **One provider interface, Gemini first** | Gemini's free tier needs no card. The tutor talks to an interface, so another provider is one class and a setting. The key stays on the server; limits per user (15 an hour, 50 a day) and per server keep a free key from running out, and a failed answer does not count. |
 | **Hidden tests stay hidden** | Only the examples show input, expected and actual output. Hidden tests return their verdict and time, not even their error output, since a program could print its input there. |
 | **A rename changes only the name** | The file keeps its id, text and revision, so open editors are updated in place without reloading and edits in flight are unaffected; only a new extension changes the highlighting and the language it runs as. Adding or deleting a file changes the set of files, so those make every tab reload the list. |
 | **File changes in a room run one at a time** | Creating, renaming and deleting a file lock the room's row first, so the duplicate-name, 20-file and keep-one-file checks always see the previous change. Deleting also locks the file, so an edit being applied finishes first and a later one gets "not found" and makes its tab reload. |
@@ -102,6 +107,7 @@ The class name taken from Java source goes into a shell command, so only a plain
 | Code runner | 20 with a fake `docker` (every outcome including hung containers and Docker being down, each language's command and image), 3 for language detection, and 25 against real Docker in all three languages |
 | Judge | 11 verdict rules, 4 problem-file parsing (including every bundled problem), 3 judge output parsing, 10 for the growth estimate (linear, n log n, quadratic, cubic, too fast, cold starts), 6 against real Docker (an independent solution accepted on every problem in C++, Python and Java; wrong answers and `int` overflow caught; trying every pair in Two Sum runs out of time and reads as quadratic), 5 against the real database (problems, attaching to rooms, submitting) |
 | Files | 4 for file names and templates, 6 against the real database (creation, case-insensitive duplicates, invalid names, the 20-file limit, non-members) |
+| AI tutor | 8 for the code filter (code blocks, code lines in all three languages, inline code, text arriving in pieces), 5 for the prompt (rules, problem, code, verdict and growth; conversation order), 5 against a local server that answers like Gemini (streaming, quota and key errors, blocked answers), 3 for limits, 3 for JSON; 7 against the real database with a scripted model (hidden tests never reach the prompt, code never reaches the student, match lock, failed answers not counted, progress) |
 | Integration scripts | `frontend/scripts/ot-server-check.mjs` (two clients against the running server) and `frontend/scripts/ws-security-check.mjs` (a non-member trying to read, inject, and join presence) |
 
 The Java and TypeScript OT implementations were cross-checked to produce identical results on 5,000 random cases. Mutation tests confirmed the suites fail when key parts of the algorithm are broken.
@@ -152,6 +158,9 @@ All secrets and environment-specific values come from environment variables, so 
 | `CODESYNC_IMAGE_CPP`, `CODESYNC_IMAGE_PYTHON`, `CODESYNC_IMAGE_JAVA` | no | `gcc:14`, `python:3.13-slim`, `eclipse-temurin:21-jdk` | Image used to run each language |
 | `SHOW_SQL` | no | `false` | Log every SQL query |
 | `GOOGLE_CLIENT_ID` | no | (off) | OAuth client id for "Sign in with Google"; without it the button is hidden. See below. |
+| `GEMINI_API_KEY` | no | (off) | Key for the AI tutor; without it the tutor says it is switched off. See below. |
+| `TUTOR_MODEL` | no | `gemini-flash-lite-latest` | Gemini model the tutor uses; any model your key can use, e.g. a Flash or Flash-Lite one from AI Studio |
+| `TUTOR_LIMIT_PER_HOUR`, `TUTOR_LIMIT_PER_DAY`, `TUTOR_LIMIT_SERVER_PER_DAY` | no | `15`, `50`, `400` | Hints per user per hour and day, and for the whole server per day |
 | `VITE_API_URL` (frontend, at build time) | no | `http://localhost:8080` | Backend URL; the WebSocket URL is derived from it |
 
 ### Sign in with Google (optional)
@@ -161,6 +170,13 @@ All secrets and environment-specific values come from environment variables, so 
 3. Start the backend with `GOOGLE_CLIENT_ID=<the client id>`. The id is not a secret; the frontend reads it from `GET /api/auth/google/config`.
 
 A Google sign-in finds the account by Google's permanent user id, or creates one with a username from the email. It never takes over an existing password account with the same email, because registration does not prove the email belongs to whoever typed it.
+
+### AI tutor (optional)
+
+1. Open [Google AI Studio](https://aistudio.google.com/apikey), sign in and **Create API key**. The free tier needs no card. Its limits are per project and shown in AI Studio; keep `TUTOR_LIMIT_SERVER_PER_DAY` below the daily one.
+2. Start the backend with `GEMINI_API_KEY=<the key>`. The key never reaches the browser.
+
+On the free tier Google may use prompts to improve its products, so the tutor is told nothing but the problem, the open file and the last verdict. If the model name stops working, pick a current one in AI Studio and set `TUTOR_MODEL`.
 
 Generate a secret in PowerShell with a cryptographic random generator:
 
@@ -196,4 +212,4 @@ frontend/src
 
 ## Roadmap
 
-Deployment, an estimate of each solution's time complexity from how its running time grows, more problems, and a shared input box for the room.
+Deployment, more problems, a shared input box for the room, and showing how many hints were used on each problem.

@@ -85,6 +85,11 @@ In your Google OAuth client (see the main README), add `https://<your-domain>` u
 **Authorized JavaScript origins**, put the client id in `.env` as `GOOGLE_CLIENT_ID=...`, and run
 `docker compose up -d` again. The frontend asks the backend for the id, so nothing is rebuilt.
 
+### Optional: the AI tutor
+
+Put a Gemini API key in `.env` as `GEMINI_API_KEY=...` (see "AI tutor" in the main README) and run
+`docker compose up -d` again.
+
 ## Updating
 
 ```bash

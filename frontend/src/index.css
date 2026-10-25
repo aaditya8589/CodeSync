@@ -803,3 +803,55 @@ select.input { appearance: auto; padding-right: 6px; }
 .match__made { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .match__made li { font-size: 14px; }
 .editor-host__empty { position: absolute; inset: 0; z-index: 5; margin: 0; min-height: 0; background: var(--editor); padding: 24px; text-align: center; }
+
+/* Problem panel tabs */
+.panel-tabs { display: flex; gap: 4px; margin: 4px 0 16px; border-bottom: 1px solid var(--line); }
+.panel-tabs__tab {
+  background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
+  padding: 6px 10px; margin-bottom: -1px; font: inherit; font-size: 13.5px; cursor: pointer;
+}
+.panel-tabs__tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--signal); }
+.panel-tabs__tab:hover { color: var(--text); }
+
+/* Tutor */
+.tutor { display: flex; flex-direction: column; gap: 12px; font-size: 14px; }
+.tutor__intro, .tutor__off { margin: 0; color: var(--muted); font-size: 13.5px; }
+.tutor__turns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.tutor__turn { padding: 10px 12px; border-radius: var(--radius-m); line-height: 1.5; overflow-wrap: anywhere; }
+.tutor__turn p, .tutor__turn ul, .tutor__turn ol { margin: 0 0 8px; }
+.tutor__turn > :last-child { margin-bottom: 0; }
+.tutor__turn ul, .tutor__turn ol { padding-left: 20px; }
+.tutor__turn--student { align-self: flex-end; max-width: 85%; background: var(--raised); color: var(--text); font-size: 13.5px; }
+.tutor__turn--tutor { background: var(--panel); border: 1px solid var(--line); }
+.tutor__thinking { color: var(--muted); font-style: italic; }
+.tutor__guard { color: var(--warn); font-size: 12.5px; }
+.tutor__levels { display: flex; flex-wrap: wrap; gap: 6px; }
+.tutor__levels .button { height: 30px; font-size: 13px; padding: 0 10px; }
+.tutor__ask { display: flex; flex-direction: column; gap: 6px; }
+.tutor__ask textarea { resize: vertical; min-height: 56px; font: inherit; font-size: 13.5px; padding: 8px 10px; height: auto; }
+.tutor__ask-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tutor__left { color: var(--faint); font-size: 12.5px; }
+
+/* Progress */
+.progress-levels { list-style: none; padding: 0; margin: 24px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.progress-level { border: 1px solid var(--line); border-radius: var(--radius-m); padding: 14px 16px; background: var(--panel); }
+.progress-level__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.progress-level__count { color: var(--muted); font-size: 14px; }
+.progress-level__count strong { color: var(--text); font-size: 20px; }
+.progress-level__note { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
+.progress-bar { display: flex; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.progress-bar__solved { background: var(--ok); }
+.progress-bar__tried { background: var(--warn); opacity: 0.6; }
+.progress-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.progress-table th, .progress-table td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); }
+.progress-table thead th { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+.progress-table tbody th { font-weight: 500; }
+.progress-table a { color: var(--text); text-decoration: none; }
+.progress-table a:hover { color: var(--signal); }
+.progress-status--solved { color: var(--ok); }
+.progress-status--attempted { color: var(--warn); }
+.progress-status--new { color: var(--faint); }
+.progress-status small { color: var(--muted); }
+@media (max-width: 640px) {
+  .progress-table thead th:nth-child(4), .progress-table td:nth-child(4) { display: none; }
+}

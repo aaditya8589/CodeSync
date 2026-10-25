@@ -24,6 +24,7 @@ function TopBar({ title, children }: TopBarProps) {
       <nav className="topbar__nav" aria-label="Main">
         <NavLink to="/dashboard">Rooms</NavLink>
         <NavLink to="/problems">Problems</NavLink>
+        <NavLink to="/progress">Progress</NavLink>
       </nav>
       <div className="topbar__end">
         {children}

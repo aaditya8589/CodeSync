@@ -101,6 +101,17 @@ public ResponseEntity<String> handleRoomNotFound(
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(exception.getMessage());
     }
 
+    @ExceptionHandler(TutorUnavailableException.class)
+    public ResponseEntity<String> handleTutorUnavailable(TutorUnavailableException exception) {
+        HttpStatus status = exception.isConfigured() ? HttpStatus.CONFLICT : HttpStatus.SERVICE_UNAVAILABLE;
+        return ResponseEntity.status(status).body(exception.getMessage());
+    }
+
+    @ExceptionHandler(com.codesync.backend.tutor.TutorRateLimiter.LimitReachedException.class)
+    public ResponseEntity<String> handleTutorLimit(com.codesync.backend.tutor.TutorRateLimiter.LimitReachedException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(exception.getMessage());
+    }
+
     @ExceptionHandler(InvalidRunRequestException.class)
     public ResponseEntity<String> handleInvalidRunRequest(InvalidRunRequestException exception) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(exception.getMessage());
