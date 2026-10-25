@@ -161,6 +161,9 @@ public class TutorService {
 
     // During a match the tutor would be a teammate nobody else has
     private void checkNotAMatchRoom(Room room, Instant now) {
+        if (room.isInterviewRoom()) {
+            throw new TutorUnavailableException("The tutor is off in mock interviews: the interviewer gives the hints.", true);
+        }
         if (!room.isMatchRoom()) return;
         Match match = matchRepository.findFirstByRoomId(room.getId()).orElse(null);
         if (match == null || match.stateAt(now) != Match.State.ENDED) {

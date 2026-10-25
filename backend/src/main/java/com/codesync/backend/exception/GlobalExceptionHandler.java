@@ -137,6 +137,11 @@ public ResponseEntity<String> handleRoomNotFound(
         return ResponseEntity.status(HttpStatus.CONFLICT).body(exception.getMessage());
     }
 
+    @ExceptionHandler(InterviewConflictException.class)
+    public ResponseEntity<String> handleInterviewConflict(InterviewConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(exception.getMessage());
+    }
+
     @ExceptionHandler(MatchConflictException.class)
     public ResponseEntity<String> handleMatchConflict(MatchConflictException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(exception.getMessage());

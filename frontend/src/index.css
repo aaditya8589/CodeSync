@@ -855,3 +855,69 @@ select.input { appearance: auto; padding-right: 6px; }
 @media (max-width: 640px) {
   .progress-table thead th:nth-child(4), .progress-table td:nth-child(4) { display: none; }
 }
+
+/* Mock interviews */
+.interview { display: flex; flex-direction: column; gap: 14px; }
+.interview h3 { font-size: 14px; margin: 0 0 8px; }
+.interview h3 small, .interview__label { color: var(--muted); font-weight: 400; }
+.interview__role { color: var(--muted); font-size: 12.5px; }
+.interview__call { margin: 0; font-size: 13.5px; color: var(--muted); overflow-wrap: anywhere; }
+.interview__call a { color: var(--signal); }
+.interview__request { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--raised); }
+.interview__request span { flex: 1 1 100%; }
+.interview__lobby { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.interview__problem { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.interview__badge { font-size: 12px; color: var(--ok); border: 1px solid var(--ok); border-radius: 999px; padding: 1px 8px; }
+.interview__guide { border: 1px solid var(--line); border-radius: var(--radius-m); padding: 10px 12px; background: var(--panel); font-size: 13.5px; }
+.interview__guide summary { cursor: pointer; color: var(--signal); font-weight: 500; }
+.interview__guide p, .interview__guide ul { margin: 8px 0 0; }
+.interview__guide ul { padding-left: 20px; }
+.interview__hints, .interview__notes { margin: 0 0 8px; padding-left: 20px; font-size: 13.5px; display: flex; flex-direction: column; gap: 6px; }
+.interview__notes { list-style: none; padding-left: 0; }
+.interview__time { color: var(--faint); font-family: var(--code); font-size: 12px; margin-right: 4px; }
+.interview__next-hint { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 8px 10px; border-left: 3px solid var(--signal); background: var(--raised); border-radius: var(--radius-s); font-size: 13.5px; }
+.interview__next-hint p { margin: 0; }
+.interview__note-form { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.interview__note-form textarea, .scorecard-form textarea { width: 100%; height: auto; resize: vertical; font: inherit; font-size: 13.5px; padding: 8px 10px; }
+.interview__submission { margin: 0; padding: 8px 10px; border-radius: var(--radius-s); background: var(--raised); font-size: 13.5px; border-left: 3px solid var(--muted); }
+.interview__submission--ok { border-left-color: var(--ok); }
+.interview__submission--err { border-left-color: var(--err); }
+.interview__submission--limit { border-left-color: var(--warn); }
+.interview__after { display: flex; flex-wrap: wrap; gap: 8px; }
+.interview__statement { font-size: 14px; }
+.link-button { background: none; border: 0; padding: 0; color: var(--signal); font: inherit; font-size: 13px; cursor: pointer; align-self: flex-start; }
+.link-button:hover { text-decoration: underline; }
+
+.scorecard-form { display: flex; flex-direction: column; gap: 12px; }
+.scorecard-form__area { border: 0; padding: 0; margin: 0; }
+.scorecard-form__area legend { font-size: 13.5px; margin-bottom: 6px; }
+.scorecard-form__scale, .duration-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.scorecard-form__field { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.score-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 13px; cursor: pointer; }
+.score-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.score-chip small { color: var(--muted); }
+.score-chip--on { border-color: var(--signal); background: var(--raised); color: var(--text); }
+.score-chip:focus-within { outline: 2px solid var(--signal); outline-offset: 1px; }
+
+.scorecard { border: 1px solid var(--line); border-radius: var(--radius-m); padding: 12px 14px; background: var(--panel); display: flex; flex-direction: column; gap: 10px; }
+.scorecard__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.scorecard__verdict { font-size: 18px; }
+.scorecard__verdict--strong-hire, .scorecard__verdict--hire { color: var(--ok); }
+.scorecard__verdict--lean-hire { color: var(--signal); }
+.scorecard__verdict--lean-no-hire, .scorecard__verdict--no-hire { color: var(--err); }
+.scorecard__average { color: var(--muted); }
+.scorecard__areas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.scorecard__areas li { display: grid; grid-template-columns: 1fr auto 72px; align-items: center; gap: 10px; }
+.scorecard__bar { display: inline-flex; gap: 3px; }
+.scorecard__bar span { width: 14px; height: 6px; border-radius: 2px; background: var(--line); }
+.scorecard__bar span.on { background: var(--signal); }
+.scorecard__score { color: var(--muted); font-size: 12.5px; }
+.scorecard__feedback { border-top: 1px solid var(--line); padding-top: 8px; font-size: 14px; }
+.scorecard__feedback p { margin: 0 0 6px; }
+
+.new-interview { gap: 14px; }
+.side-form__field { display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; }
+.side-form__field legend { margin-bottom: 6px; }
+.progress-interviews { margin-top: 32px; }
+.progress-interviews h2 { font-size: 18px; }
+.progress-table td small { color: var(--muted); }

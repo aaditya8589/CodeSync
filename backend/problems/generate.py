@@ -1046,6 +1046,334 @@ PROBLEMS = [
 ]
 
 
+# Interviewer-only material: shown to the interviewer in a mock interview, never to the candidate
+# or the tutor. guide: what a good answer looks like; hints: given one at a time, mildest first.
+INTERVIEW = {
+    "add-two-numbers": {
+        "guide": """**Good answer:** read two numbers, print the sum. Use a 64-bit type: the values reach 10^18.
+
+**Watch for:** `int` overflow; extra output like prompts ("Enter a:").
+
+**Follow-ups:**
+- What if the numbers had 1000 digits? (Add digit by digit with a carry.)
+- How would you test it? (Negative, zero, the largest values.)""",
+        "hints": [
+            "How large can the numbers get? Will your type hold them?",
+            "10^18 needs a 64-bit integer: `long long` in C++, `long` in Java. Python has no limit.",
+            "Read both, print `a + b`, and print nothing else: the judge compares the output exactly.",
+        ],
+    },
+    "two-sum": {
+        "guide": """**Good answer:** one pass with a hash map from value to position. For each number x, check whether `target - x` was seen; if not, remember x. O(n) time, O(n) space.
+
+**Acceptable first idea:** try every pair, O(n²). It times out on the largest tests; a strong candidate says so before coding.
+
+**Alternative:** sort (value, index) pairs and use two pointers, O(n log n).
+
+**Watch for:** using the same position twice; printing positions in the wrong order (i < j).
+
+**Follow-ups:**
+- The array is sorted: can you use O(1) extra space? (Two pointers.)
+- Count all pairs instead of finding one.""",
+        "hints": [
+            "Brute force is fine as a start. How long does it take for n = 200,000?",
+            "When you are at position j, what would you like to know about the numbers before it?",
+            "Keep a map from each value seen so far to its position; look up `target - x` before storing x.",
+        ],
+    },
+    "valid-brackets": {
+        "guide": """**Good answer:** a stack. Push opening brackets; on a closing bracket the top must be its partner, then pop. Valid if the stack ends empty. O(n).
+
+**Watch for:** forgetting to check the stack is empty at the end ("(("); popping an empty stack (")("); only counting brackets, which accepts "([)]".
+
+**Follow-ups:**
+- Only one kind of bracket: can you do it without a stack? (A counter.)
+- Return the length of the longest valid substring.""",
+        "hints": [
+            "Which opening bracket must a closing bracket match?",
+            "The most recent unmatched opening bracket is the one that must close first. What structure gives you the most recent item?",
+            "Use a stack: push openers, and on a closer check and pop the top. At the end the stack must be empty.",
+        ],
+    },
+    "balance-point": {
+        "guide": """**Good answer:** compute the total once; walk left to right keeping the left sum. At i the right sum is `total - left - a[i]`. O(n), 64-bit sums.
+
+**Acceptable first idea:** sum both sides for every i, O(n²): times out.
+
+**Watch for:** 32-bit overflow; off-by-one (the element at i is on neither side); returning a later match instead of the first.
+
+**Follow-ups:**
+- Return every balance point.
+- Same question on a stream where you can only read once (needs the total first: two passes or storing).""",
+        "hints": [
+            "What repeated work happens if you add up both sides for every position?",
+            "If you know the total of the whole array and the sum to the left, what is the sum to the right?",
+            "One pass for the total, one pass keeping the left sum; compare `left` with `total - left - a[i]`. Use 64-bit numbers.",
+        ],
+    },
+    "stock-profit": {
+        "guide": """**Good answer:** one pass keeping the cheapest price so far; at each day the best sale today is `price - cheapest`. O(n), O(1) space.
+
+**Acceptable first idea:** every buy/sell pair, O(n²): times out.
+
+**Watch for:** selling before buying; returning a negative profit instead of 0.
+
+**Follow-ups:**
+- Any number of trades (sum all rises).
+- At most two trades (DP with four states).
+- A fee per trade.""",
+        "hints": [
+            "If you sell on day j, which day would you have liked to buy on?",
+            "The best buy for selling on day j is the cheapest day before j. Can you keep that as you go?",
+            "Walk once, keeping the minimum price so far and the best `price - minimum`.",
+        ],
+    },
+    "maximum-subarray": {
+        "guide": """**Good answer:** Kadane: the best sum ending at i is `max(a[i], best ending at i-1 + a[i])`; the answer is the largest of these. O(n), 64-bit.
+
+**Alternative:** prefix sums, keeping the minimum prefix so far (same idea as Stock Profit).
+
+**Watch for:** starting the best at 0 (wrong when every number is negative); 32-bit overflow (a hidden test has 50,000 copies of 10^9).
+
+**Follow-ups:**
+- Return the positions, not just the sum.
+- Circular array.
+- Maximum product instead of sum.""",
+        "hints": [
+            "Think about the best sum of a part that ends exactly at position i.",
+            "Given the best part ending at i - 1, the best ending at i either extends it or starts fresh at i. When does starting fresh win?",
+            "Keep `current = max(a[i], current + a[i])` and the largest `current` seen. Start from the first element, not 0, and use 64 bits.",
+        ],
+    },
+    "count-islands": {
+        "guide": """**Good answer:** scan the grid; at each unvisited land cell, count an island and flood it (BFS, or DFS with an explicit stack). O(r × c).
+
+**Watch for:** recursive DFS overflowing the stack (one hidden island winds through the whole grid); diagonal neighbours (they do not connect); marking cells visited only when popped, which adds them to the queue many times.
+
+**Follow-ups:**
+- Size of the largest island.
+- Islands appear one at a time (online): union-find.""",
+        "hints": [
+            "When you find a land cell, how can you find everything that belongs to the same island?",
+            "Visit all land reachable from it and mark it, so you never count it again. BFS or DFS both work.",
+            "A recursive DFS can be 250,000 calls deep here. Use a queue (BFS) or your own stack, and mark cells when you add them.",
+        ],
+    },
+    "longest-distinct-stretch": {
+        "guide": """**Good answer:** sliding window with a map from value to its last position. When a[i] was seen inside the window, move the left end past that position. O(n).
+
+**Acceptable first idea:** grow a set from every start, O(n × length): times out.
+
+**Watch for:** moving the left end backwards (take the max); counting values outside the window as repeats.
+
+**Follow-ups:**
+- At most k distinct values instead of all distinct.
+- Return the stretch itself.""",
+        "hints": [
+            "Suppose the stretch from l to r has no repeats and a[r + 1] repeats something. Do you need to restart from scratch?",
+            "Keep a window [l, r]. When a new number is already in the window, where must the window now start?",
+            "Store each value's last position; on a repeat inside the window, set l to one past that position (never move l back).",
+        ],
+    },
+    "count-in-range": {
+        "guide": """**Good answer:** sort once; each question is `upper_bound(b) - lower_bound(a)`. O((n + q) log n).
+
+**Alternative:** counting array plus prefix sums over values up to 10^6: O(n + q + V).
+
+**Acceptable first idea:** scan all numbers for each question, O(n × q): times out.
+
+**Watch for:** off-by-one at the bounds (both inclusive); slow output with many lines.
+
+**Follow-ups:**
+- The numbers change between questions (Fenwick tree).""",
+        "hints": [
+            "Each question scans everything. What could you prepare once so every question is fast?",
+            "In a sorted list, all numbers between a and b sit next to each other. How do you find where that block starts and ends?",
+            "Sort, then use binary search: first position ≥ a and first position > b; the answer is the difference.",
+        ],
+    },
+    "covered-length": {
+        "guide": """**Good answer:** sort stretches by start; sweep, extending the current block while the next start ≤ current end, otherwise close the block. O(n log n).
+
+**Watch for:** touching stretches (`l == current end`) must join; a stretch fully inside another; summing lengths before merging.
+
+**Follow-ups:**
+- Insert one new stretch into an already merged list.
+- Points instead: how many stretches cover the busiest point? (Lecture Halls.)""",
+        "hints": [
+            "In what order would you like to look at the stretches?",
+            "Sorted by start, a stretch either joins the block you are building or starts a new one. What decides which?",
+            "Sort by l; keep the current block's end. If l ≤ end, extend end to max(end, r); otherwise add the block's length and start a new one.",
+        ],
+    },
+    "longest-increasing-subsequence": {
+        "guide": """**Good answer:** patience sorting: keep `tails[k]` = the smallest possible last value of an increasing subsequence of length k + 1. For each x, binary search the first tail ≥ x and replace it (or append). O(n log n).
+
+**Acceptable first idea:** DP over all earlier positions, O(n²): times out.
+
+**Watch for:** non-strict comparisons (equal values don't count: use lower_bound); thinking `tails` is the subsequence itself.
+
+**Follow-ups:**
+- Print the subsequence (keep parent links).
+- Longest non-decreasing.""",
+        "hints": [
+            "Start with the O(n²) DP: the best length ending at each position. Which part is slow?",
+            "For each length, only the smallest possible ending value matters. Why?",
+            "Keep those smallest endings in an array; it stays sorted, so binary search where each new number goes.",
+        ],
+    },
+    "friend-groups": {
+        "guide": """**Good answer:** count connected components: BFS/DFS over an adjacency list, or union-find with path compression. O(n + m).
+
+**Watch for:** recursive DFS with 65,536 people in one chain (stack overflow, and Python's recursion limit); people with no friends are groups too; duplicate and self friendships.
+
+**Follow-ups:**
+- Friendships arrive one by one; answer the number of groups after each (union-find).
+- Size of the largest group.""",
+        "hints": [
+            "Draw it: people are points and friendships are lines. What is a group in that picture?",
+            "Start from someone not yet in a group and visit everyone reachable. How many times do you start?",
+            "Use BFS with a queue (or union-find); recursion may be 65,536 deep here.",
+        ],
+    },
+    "lecture-halls": {
+        "guide": """**Good answer:** sort by start; keep a min-heap of end times of halls in use. Before placing a lecture, free the hall that ends earliest if it ends ≤ start. The answer is the largest heap size. O(n log n).
+
+**Alternative:** sort starts and ends separately and sweep (+1 at a start, −1 at an end; ends first on ties).
+
+**Watch for:** a lecture ending at t and one starting at t share a hall.
+
+**Follow-ups:**
+- Assign hall numbers to each lecture.
+- Maximum number of lectures one person can attend (greedy by end time).""",
+        "hints": [
+            "Think about one moment in time: how many halls are busy then?",
+            "The answer is the largest number of lectures running at the same moment. Going through lectures by start time, what do you need to know about the ones already running?",
+            "Keep the end times of running lectures in a min-heap; drop those that end by the current start; the biggest heap size is the answer.",
+        ],
+    },
+    "coin-change": {
+        "guide": """**Good answer:** DP over amounts: `best[v] = 1 + min(best[v - c])` over coins c ≤ v, `best[0] = 0`. O(n × amount). (BFS over amounts works too.)
+
+**Watch for:** greedy (largest coin first) fails: coins 1, 3, 4 and amount 6; unreachable amounts (use a sentinel, answer −1); plain recursion without memo is exponential.
+
+**Follow-ups:**
+- Count the number of ways (order does not matter: loop coins outside).
+- Each coin at most once (0/1 knapsack).""",
+        "hints": [
+            "Try greedy on coins 1, 3, 4 and amount 6. What goes wrong?",
+            "If you knew the fewest coins for every smaller amount, how would you get the answer for amount v?",
+            "Fill an array for amounts 0..amount: best[v] = 1 + the smallest best[v - c]. Mark unreachable amounts.",
+        ],
+    },
+    "pair-count": {
+        "guide": """**Good answer:** sort; two pointers i (low) and j (high). If a[i] + a[j] ≤ k, all pairs (i, i+1..j) count: add j − i and move i; else move j down. O(n log n). Binary search per element also works.
+
+**Watch for:** a[i] + a[j] overflowing 32 bits (values up to 10^9, k up to 2·10^9); the count needs 64 bits; counting a pair twice or a position with itself.
+
+**Follow-ups:**
+- Pairs with sum exactly k.
+- Triples with sum ≤ k (O(n²)).""",
+        "hints": [
+            "Does the order of the numbers matter for the answer? What could you do with that freedom?",
+            "After sorting, if the smallest plus the largest is ≤ k, what do you know about the smallest with everything else?",
+            "Two pointers from both ends: when a[i] + a[j] ≤ k add j − i and move i up, otherwise move j down. Use 64-bit sums and count.",
+        ],
+    },
+    "ship-capacity": {
+        "guide": """**Good answer:** binary search on the capacity between max(weight) and sum(weight); for a capacity, a greedy pass counts the days needed. O(n log sum).
+
+**Key insight to listen for:** "if capacity C works, every larger capacity works too" (monotonic), which is what makes binary search valid.
+
+**Acceptable first idea:** try capacities upward one by one: far too slow.
+
+**Watch for:** the lower bound must be the heaviest package; sum needs 64 bits; off-by-one in the search.
+
+**Follow-ups:**
+- Split an array into k parts minimising the largest sum (same problem).
+- Koko eating bananas.""",
+        "hints": [
+            "If you are told the capacity, how would you check whether d days are enough?",
+            "If capacity C is enough, is C + 1 enough too? What does that let you do instead of trying every capacity?",
+            "Binary search the smallest capacity between the heaviest package and the total, using the greedy day count as the test.",
+        ],
+    },
+    "course-order": {
+        "guide": """**Good answer:** Kahn's algorithm with a min-heap instead of a queue: start with all courses that need nothing; repeatedly take the smallest, lower its followers' counts, add those reaching 0. If fewer than n come out, there is a cycle. O((n + m) log n).
+
+**Watch for:** DFS-based topological order does not give the smallest-number-first order; scanning all courses for the next one is O(n²).
+
+**Follow-ups:**
+- Any valid order (plain queue).
+- The fewest terms if any number of courses fit in a term (longest path in a DAG).""",
+        "hints": [
+            "Which courses can you take right at the start?",
+            "Taking a course may make others available. Track, for each course, how many requirements are still missing.",
+            "Keep the available courses in a min-heap; take the smallest, update counts, push those that reach 0. If you finish early, print IMPOSSIBLE.",
+        ],
+    },
+    "shortest-paths": {
+        "guide": """**Good answer:** Dijkstra with a min-heap of (distance, city); skip stale entries. O((n + m) log n). 64-bit distances.
+
+**Watch for:** BFS ignores weights; Bellman-Ford is O(n·m): too slow; 32-bit overflow (paths up to ~6.5·10^10); weight-0 roads; unreachable cities (−1).
+
+**Follow-ups:**
+- Print the path to a city.
+- Negative weights (Bellman-Ford; why Dijkstra breaks).""",
+        "hints": [
+            "Would BFS work if every road had length 1? What changes when lengths differ?",
+            "Always settle the closest city not yet settled. How do you find it quickly?",
+            "Dijkstra with a priority queue of (distance, city); skip entries older than the city's best distance. Use 64-bit numbers.",
+        ],
+    },
+    "largest-rectangle": {
+        "guide": """**Good answer:** monotonic stack. For each bar find the nearest lower bar on each side; its rectangle is h × (right − left − 1). One pass with a stack of increasing heights does both. O(n).
+
+**Acceptable first idea:** expand from each bar, O(n²) on rising skylines: times out.
+
+**Watch for:** 64-bit area; equal heights; flushing the stack at the end (a 0-height sentinel).
+
+**Follow-ups:**
+- Largest rectangle of 1s in a binary matrix (this, row by row).""",
+        "hints": [
+            "Suppose the rectangle's height is exactly the height of bar i. How wide can it be?",
+            "It stretches until a lower bar on each side. How can you find the nearest lower bar for every position quickly?",
+            "Keep a stack of bars with increasing heights; when a lower bar arrives, pop and compute each popped bar's rectangle. Add a 0 at the end.",
+        ],
+    },
+    "edit-distance": {
+        "guide": """**Good answer:** DP table d[i][j] = distance between the first i letters of a and the first j of b; if letters match take d[i−1][j−1], else 1 + min(insert, delete, replace). O(n × m); two rows are enough for memory.
+
+**Watch for:** base cases (d[i][0] = i, d[0][j] = j); recursion without memo is exponential.
+
+**Follow-ups:**
+- Print the steps.
+- Only insertions and deletions (relates to the longest common subsequence).""",
+        "hints": [
+            "Look at the last letters of both words. What are your options for them?",
+            "Each option leaves a smaller version of the same question. Which smaller questions, and how do you combine them?",
+            "Fill a table over prefixes: equal letters cost nothing, otherwise 1 + the best of insert, delete and replace. Start from the empty prefixes.",
+        ],
+    },
+    "pattern-count": {
+        "guide": """**Good answer:** KMP (prefix function) or Z-function on `pattern + '#' + text`, counting overlapping matches. O(n + m).
+
+**Acceptable first idea:** compare at every position, O(n × m) in the worst case (text of a's, pattern a…ab).
+
+**Watch for:** missing overlapping matches; a pattern longer than the text.
+
+**Follow-ups:**
+- Rolling hash (Rabin-Karp) and its collision risk.
+- Many patterns at once (Aho-Corasick).""",
+        "hints": [
+            "When a comparison fails after matching many letters, do you really need to go back and recompare them?",
+            "What you matched is a prefix of the pattern. How far into the pattern can you continue from, using only the pattern itself?",
+            "Precompute for each prefix of the pattern its longest proper prefix that is also a suffix (KMP), then scan the text once.",
+        ],
+    },
+}
+
+
 def section(name, body):
     return f"=== {name}\n{body.rstrip(chr(10))}\n"
 
@@ -1075,6 +1403,9 @@ def main():
         old.unlink()
     # Tests are made in list order, so adding a problem never changes another one's tests;
     # they are listed easiest first, within a difficulty in the order they were added
+    missing = [p["slug"] for p in PROBLEMS if p["slug"] not in INTERVIEW or len(INTERVIEW[p["slug"]]["hints"]) < 2]
+    if missing:
+        sys.exit(f"no interviewer guide or hints for: {', '.join(missing)}")
     for problem in PROBLEMS:
         problem["tests"] = problem["tests"]()
     rank = {"Easy": 0, "Medium": 1, "Hard": 2}
@@ -1090,6 +1421,9 @@ def main():
             section("output", problem["output"]),
             section("constraints", problem["constraints"]),
         ]
+        material = INTERVIEW[problem["slug"]]
+        parts.append(section("guide", material["guide"]))
+        parts += [section("hint", hint) for hint in material["hints"]]
         parts += [test_block("sample", t, problem["solve"]) for t in problem["samples"]]
         parts += [test_block("test", t, problem["solve"]) for t in problem["tests"]]
         (out / f"{problem['slug']}.txt").write_text("".join(parts), encoding="utf-8", newline="\n")

@@ -29,12 +29,13 @@ public class Room {
     private Problem problem;
 
     // MATCH rooms exist for one contest: only the players' own files, joined through the host.
+    // INTERVIEW rooms hold one mock interview, joined through the interviewer's link.
     // Null for every room made before match rooms existed, which are all ordinary rooms.
     @Enumerated(EnumType.STRING)
     @Column(length = 10)
     private Kind kind;
 
-    public enum Kind { NORMAL, MATCH }
+    public enum Kind { NORMAL, MATCH, INTERVIEW }
 
     public Room() {
     }
@@ -52,8 +53,18 @@ public class Room {
         return room;
     }
 
+    public static Room forInterview(String name, User owner) {
+        Room room = new Room(name, owner);
+        room.kind = Kind.INTERVIEW;
+        return room;
+    }
+
     public boolean isMatchRoom() {
         return kind == Kind.MATCH;
+    }
+
+    public boolean isInterviewRoom() {
+        return kind == Kind.INTERVIEW;
     }
 
     public Kind getKind() {

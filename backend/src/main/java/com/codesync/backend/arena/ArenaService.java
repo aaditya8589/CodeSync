@@ -157,6 +157,10 @@ public class ArenaService {
     public String attachProblem(UUID roomId, String slug, String username) {
         roomService.checkRoomAccess(roomId, username);
         Room room = roomRepository.findById(roomId).orElseThrow(() -> new RoomNotFoundException("Room not found"));
+        if (room.isInterviewRoom()) {
+            // The interviewer reveals the problem when they are ready
+            throw new InvalidRunRequestException("In a mock interview the interviewer picks and reveals the problem");
+        }
         room.setProblem(slug == null || slug.isBlank() ? null : findProblem(slug));
         return room.getProblem() == null ? null : room.getProblem().getSlug();
     }

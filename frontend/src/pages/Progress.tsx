@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import DifficultyTag from "../arena/DifficultyTag"
 import TopBar from "../components/TopBar"
 import { getProgress, type Progress as ProgressData, type ProblemProgress } from "../services/arenaService"
+import { myInterviews, RECOMMENDATION_TEXT, type InterviewSummary } from "../services/interviewService"
 
 const STATUS_TEXT: Record<ProblemProgress["status"], string> = {
   SOLVED: "Solved",
@@ -15,8 +16,10 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 
 function Progress() {
   const [progress, setProgress] = useState<ProgressData | null>(null)
   const [error, setError] = useState("")
+  const [interviews, setInterviews] = useState<InterviewSummary[]>([])
 
   useEffect(() => {
+    myInterviews().then(setInterviews).catch(() => setInterviews([]))
     getProgress()
       .then(setProgress)
       .catch(() => setError("Couldn't load your progress. Check that the backend is running, then reload."))
@@ -83,6 +86,39 @@ function Progress() {
               </tbody>
             </table>
           </>
+        )}
+
+        {interviews.length > 0 && (
+          <section className="progress-interviews" aria-label="Mock interviews">
+            <h2>Mock interviews</h2>
+            <table className="progress-table">
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">You</th>
+                  <th scope="col">Problem</th>
+                  <th scope="col">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {interviews.map((item) => (
+                  <tr key={item.roomId}>
+                    <th scope="row"><Link to={`/rooms/${item.roomId}`}>{day(item.createdAt)}</Link></th>
+                    <td>
+                      {item.role === "CANDIDATE" ? "Solved" : "Interviewed"}
+                      {item.partner && <small> {item.role === "CANDIDATE" ? "for" : ""} {item.partner}</small>}
+                    </td>
+                    <td>{item.problemTitle ?? "Not revealed"}{item.hintsGiven > 0 && <small> · {item.hintsGiven} hint{item.hintsGiven > 1 ? "s" : ""}</small>}</td>
+                    <td>
+                      {item.recommendation
+                        ? <>{RECOMMENDATION_TEXT[item.recommendation]} <small>{item.averageScore?.toFixed(1)} / 4</small></>
+                        : item.state === "ENDED" ? <small>No scorecard yet</small> : <small>{item.state === "LOBBY" ? "Not started" : "In progress"}</small>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         )}
       </main>
     </>

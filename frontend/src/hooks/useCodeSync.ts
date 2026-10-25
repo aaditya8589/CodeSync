@@ -5,6 +5,7 @@ import { OtClient, type ServerOperation } from "../ot/otClient"
 import type { TextOperation } from "../ot/textOperation"
 import type { RoomDocument } from "../services/documentService"
 import type { MatchChangedMessage } from "../services/matchService"
+import type { InterviewChangedMessage } from "../services/interviewService"
 
 interface AppliedOperationMessage extends ServerOperation {
   documentId: string
@@ -83,6 +84,7 @@ interface UseCodeSyncProps {
   onSubmission?: (message: RoomSubmissionMessage) => void
   onFileChange?: (message: FileChangeMessage) => void
   onMatchChanged?: (message: MatchChangedMessage) => void
+  onInterviewChanged?: (message: InterviewChangedMessage) => void
 }
 
 const GAP_TIMEOUT_MS = 3000
@@ -100,6 +102,7 @@ function useCodeSync({
   onSubmission,
   onFileChange,
   onMatchChanged,
+  onInterviewChanged,
 }: UseCodeSyncProps) {
   // One ID per tab: the same user can have the room open twice
   const [clientId] = useState(() => crypto.randomUUID())
@@ -121,9 +124,9 @@ function useCodeSync({
   // Remote cursors from a revision this tab has not reached yet, retried after each update
   const earlyCursorsRef = useRef(new Map<string, RemoteCursorMessage>())
 
-  const callbacksRef = useRef({ onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange, onMatchChanged })
+  const callbacksRef = useRef({ onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange, onMatchChanged, onInterviewChanged })
   useEffect(() => {
-    callbacksRef.current = { onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange, onMatchChanged }
+    callbacksRef.current = { onRemoteOperation, onResyncNeeded, onRemoteCursor, onProblemChanged, onSubmission, onFileChange, onMatchChanged, onInterviewChanged }
   })
 
   // A cursor is only sent while its document has no unconfirmed edits. Then the editor shows
@@ -291,6 +294,9 @@ function useCodeSync({
         })
         client.subscribe(`/topic/rooms/${roomId}/match`, (frame) => {
           callbacksRef.current.onMatchChanged?.(JSON.parse(frame.body))
+        })
+        client.subscribe(`/topic/rooms/${roomId}/interview`, (frame) => {
+          callbacksRef.current.onInterviewChanged?.(JSON.parse(frame.body))
         })
         client.subscribe(`/topic/rooms/${roomId}/problem`, (frame) => {
           callbacksRef.current.onProblemChanged?.(JSON.parse(frame.body))

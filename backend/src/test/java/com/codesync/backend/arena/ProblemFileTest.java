@@ -79,6 +79,9 @@ class ProblemFileTest {
             assertTrue(problem.expectedComplexity() != null && problem.expectedComplexity().startsWith("O("),
                     problem.slug() + " names no expected complexity");
             assertEquals(64, problem.contentHash().length(), problem.slug());
+            assertTrue(problem.interviewerGuide() != null && problem.interviewerGuide().contains("Good answer"),
+                    problem.slug() + " has no interviewer guide");
+            assertTrue(problem.hints().size() >= 2, problem.slug() + " has too few hints");
             for (ProblemFile.Test test : problem.tests()) {
                 assertTrue(test.input().endsWith("\n"), problem.slug());
                 assertFalse(test.expectedOutput().isBlank(), problem.slug());
@@ -98,5 +101,15 @@ class ProblemFileTest {
         assertEquals("O(1)", named.expectedComplexity());
         assertFalse(plain.contentHash().equals(named.contentHash()));
         assertEquals(plain.contentHash(), ProblemFile.parse("x", EXAMPLE).contentHash());
+    }
+
+    @Test
+    void hintsKeepTheirOrderAndTheGuideIsItsOwnSection() {
+        ProblemFile file = ProblemFile.parse("x", EXAMPLE.replace("=== statement",
+                "=== guide\nUse addition.\n=== hint\nFirst hint.\n=== hint\nSecond\nhint.\n=== statement"));
+        assertEquals("Use addition.", file.interviewerGuide());
+        assertEquals(java.util.List.of("First hint.", "Second\nhint."), file.hints());
+        assertEquals(java.util.List.of(), ProblemFile.parse("x", EXAMPLE).hints());
+        assertEquals(null, ProblemFile.parse("x", EXAMPLE).interviewerGuide());
     }
 }
