@@ -114,7 +114,7 @@ public final class TutorPrompts {
         }
         out.append('.');
         if (last.growthSummary() != null) {
-            out.append(" Running time measured by the judge: ").append(last.growthSummary()).append(". ");
+            out.append(" Running time measured by the judge against the input size: ").append(last.growthSummary()).append(". ");
             if (last.growthDetail() != null) out.append(last.growthDetail());
         }
         return out.toString().strip();

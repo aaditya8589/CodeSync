@@ -28,6 +28,9 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Runs problems/generate.py; on Windows it is usually "python" (see the windows profile).
+		     Override with -Dpython.command=py if needed. -->
+		<python.command>python3</python.command>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -94,7 +97,67 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+
+			<!-- The problems' hidden tests are generated, not kept in git: tens of megabytes of
+			     numbers. generate.py skips the work when its output is already current. -->
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.5.0</version>
+				<executions>
+					<execution>
+						<id>generate-problems</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>${python.command}</executable>
+							<arguments>
+								<argument>${project.basedir}/problems/generate.py</argument>
+								<argument>--out</argument>
+								<argument>${project.build.directory}/generated-resources/problems</argument>
+							</arguments>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>build-helper-maven-plugin</artifactId>
+				<version>3.6.0</version>
+				<executions>
+					<execution>
+						<id>add-problems</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>add-resource</goal>
+						</goals>
+						<configuration>
+							<resources>
+								<resource>
+									<directory>${project.build.directory}/generated-resources</directory>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<profile>
+			<id>windows</id>
+			<activation>
+				<os>
+					<family>windows</family>
+				</os>
+			</activation>
+			<properties>
+				<python.command>python</python.command>
+			</properties>
+		</profile>
+	</profiles>
 
 </project>

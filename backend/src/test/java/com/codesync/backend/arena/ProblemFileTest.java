@@ -68,7 +68,7 @@ class ProblemFileTest {
     @Test
     void everyBundledProblemIsWellFormed() {
         List<ProblemFile> problems = ProblemCatalog.loadAll();
-        assertEquals(14, problems.size());
+        assertEquals(21, problems.size());
 
         Set<Integer> positions = new HashSet<>();
         for (ProblemFile problem : problems) {
