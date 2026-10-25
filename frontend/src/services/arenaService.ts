@@ -121,3 +121,26 @@ export const submitDocument = (roomId: string, documentId: string) =>
     method: "POST",
     body: JSON.stringify({ documentId }),
   })
+
+export interface ProgressLevel {
+  difficulty: string
+  solved: number
+  attempted: number
+  total: number
+}
+
+export interface ProblemProgress {
+  slug: string
+  title: string
+  difficulty: string
+  status: "SOLVED" | "ATTEMPTED" | "NEW"
+  attempts: number
+  solvedAt: string | null
+}
+
+export interface Progress {
+  difficulties: ProgressLevel[]
+  problems: ProblemProgress[]
+}
+
+export const getProgress = () => request<Progress>("/api/progress")

@@ -31,6 +31,9 @@ services:
       EXECUTION_MAX_CONCURRENT: ${EXECUTION_MAX_CONCURRENT:-4}
       # Optional; leave empty to hide the Google button
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Optional; leave empty to switch the AI tutor off
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      TUTOR_MODEL: ${TUTOR_MODEL:-gemini-flash-lite-latest}
     volumes:
       # Lets the backend start sandbox containers on this server. Whoever controls the
       # backend controls Docker, so the backend is not reachable directly: only through Caddy.

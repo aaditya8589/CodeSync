@@ -620,7 +620,10 @@ function Room() {
 
         {problemOpen && (
           <RoomProblemPanel
+            roomId={room.id}
             problem={shownProblem}
+            openFile={activeDocument ? { id: activeDocument.id, fileName: activeDocument.fileName } : null}
+            tutorAllowed={!isMatchRoom}
             onChoose={(slug) => void chooseProblem(slug)}
             onClose={() => setProblemOpen(false)}
           />

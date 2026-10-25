@@ -5,6 +5,7 @@ import com.codesync.backend.arena.Judge;
 import com.codesync.backend.dto.arena.AttachProblemRequest;
 import com.codesync.backend.dto.arena.ProblemDetail;
 import com.codesync.backend.dto.arena.ProblemSummary;
+import com.codesync.backend.dto.arena.ProgressResponse;
 import com.codesync.backend.dto.arena.RoomProblemMessage;
 import com.codesync.backend.dto.arena.SubmissionMessage;
 import com.codesync.backend.dto.arena.SubmissionSummary;
@@ -39,6 +40,11 @@ public class ArenaController {
     @GetMapping("/api/problems")
     public List<ProblemSummary> problems(Authentication authentication) {
         return arenaService.listProblems(authentication.getName());
+    }
+
+    @GetMapping("/api/progress")
+    public ProgressResponse progress(Authentication authentication) {
+        return arenaService.progress(authentication.getName());
     }
 
     @GetMapping("/api/problems/{slug}")

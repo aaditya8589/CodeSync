@@ -2,6 +2,7 @@ package com.codesync.backend.arena;
 
 import com.codesync.backend.dto.arena.ProblemDetail;
 import com.codesync.backend.dto.arena.ProblemSummary;
+import com.codesync.backend.dto.arena.ProgressResponse;
 import com.codesync.backend.dto.arena.SubmissionSummary;
 import com.codesync.backend.entity.Document;
 import com.codesync.backend.entity.Match;
@@ -28,8 +29,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -80,6 +85,38 @@ public class ArenaService {
                 .map(problem -> new ProblemSummary(problem.getSlug(), problem.getTitle(),
                         problem.getDifficulty(), solved.contains(problem.getSlug())))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ProgressResponse progress(String username) {
+        record Tried(long attempts, long accepted, Instant firstAccepted) {
+        }
+        Map<String, Tried> tried = new HashMap<>();
+        for (Object[] row : submissionRepository.summarizeByProblem(username)) {
+            tried.put((String) row[0], new Tried(((Number) row[1]).longValue(),
+                    row[2] == null ? 0 : ((Number) row[2]).longValue(), (Instant) row[3]));
+        }
+
+        List<ProgressResponse.ProblemProgress> problems = new ArrayList<>();
+        Map<String, int[]> levels = new LinkedHashMap<>();
+        for (String difficulty : List.of("Easy", "Medium", "Hard")) levels.put(difficulty, new int[3]);
+        for (Problem problem : problemRepository.findAllByOrderByPositionAsc()) {
+            Tried attempt = tried.get(problem.getSlug());
+            String status = attempt == null ? "NEW" : attempt.accepted() > 0 ? "SOLVED" : "ATTEMPTED";
+            problems.add(new ProgressResponse.ProblemProgress(problem.getSlug(), problem.getTitle(),
+                    problem.getDifficulty(), status, attempt == null ? 0 : (int) attempt.attempts(),
+                    attempt == null ? null : attempt.firstAccepted()));
+            int[] counts = levels.computeIfAbsent(problem.getDifficulty(), key -> new int[3]);
+            if (status.equals("SOLVED")) counts[0]++;
+            if (status.equals("ATTEMPTED")) counts[1]++;
+            counts[2]++;
+        }
+        List<ProgressResponse.Level> summary = levels.entrySet().stream()
+                .filter(entry -> entry.getValue()[2] > 0)
+                .map(entry -> new ProgressResponse.Level(entry.getKey(), entry.getValue()[0],
+                        entry.getValue()[1], entry.getValue()[2]))
+                .toList();
+        return new ProgressResponse(summary, problems);
     }
 
     @Transactional(readOnly = true)
@@ -165,7 +202,7 @@ public class ArenaService {
                 language, attempt.source(), attempt.tests().stream().map(ProblemFile.Test::input).toList());
         Judge.Result result = Judge.judge(attempt.tests(), run, attempt.expectedComplexity());
 
-        transactions.executeWithoutResult(status -> submissionRepository.save(new Submission(
+        Submission submission = new Submission(
                 problemRepository.getReferenceById(attempt.problemId()),
                 username,
                 roomId,
@@ -178,7 +215,11 @@ public class ArenaService {
                 result.maxTimeMs(),
                 attempt.matchId(),
                 submittedAt
-        )));
+        );
+        submission.recordDetails(result.failedTest(),
+                result.growth() == null ? null : result.growth().summary(),
+                result.growth() == null ? null : result.growth().detail());
+        transactions.executeWithoutResult(status -> submissionRepository.save(submission));
 
         log.info("Submission by {} for {}: {} ({}/{})", username, attempt.problemTitle(),
                 result.verdict(), result.passed(), result.total());

@@ -4,6 +4,7 @@ import Register from "./pages/Register"
 import Dashboard from "./pages/Dashboard"
 import Room from "./pages/Room"
 import Problems from "./pages/Problems"
+import Progress from "./pages/Progress"
 import Problem from "./pages/Problem"
 import RequireSession from "./auth/RequireSession"
 import NewMatch from "./pages/NewMatch"
@@ -25,6 +26,7 @@ function App() {
         <Route path="/dashboard" element={<RequireSession><Dashboard /></RequireSession>} />
         <Route path="/rooms/:roomId" element={<RequireSession><RoomPage /></RequireSession>} />
         <Route path="/problems" element={<RequireSession><Problems /></RequireSession>} />
+        <Route path="/progress" element={<RequireSession><Progress /></RequireSession>} />
         <Route path="/problems/:slug" element={<RequireSession><Problem /></RequireSession>} />
         <Route path="/matches/new" element={<RequireSession><NewMatch /></RequireSession>} />
         <Route path="/match/:roomId" element={<RequireSession><MatchEntry /></RequireSession>} />
