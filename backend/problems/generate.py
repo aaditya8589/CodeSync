@@ -383,6 +383,15 @@ def two_sum_tests():
     tests += [two_sum_case(n, -50, 50) for n in (5, 8, 12)]
     tests += [two_sum_case(n, -10**9, 10**9) for n in (100, 500)]
     tests += [two_sum_case(n, -10**9, 10**9, late=True) for n in ladder(1024, 131072)]
+    # One step further up the ladder, so trying every pair runs out of time even on a fast
+    # machine. Built with its own random numbers so the other problems' tests stay the same; the
+    # only pair reaching the target is the two largest values, placed near the end.
+    extra = random.Random(262144)
+    n = 262144
+    values = [extra.randint(-10**9, 9 * 10**8) for _ in range(n)]
+    i, j = sorted(extra.sample(range(n - n // 10, n), 2))
+    values[i], values[j] = 10**9 - 1, 10**9 - 2
+    tests.append(f"{n} {2 * 10**9 - 3}\n{' '.join(map(str, values))}\n")
     return tests
 
 
@@ -727,7 +736,7 @@ PROBLEMS = [
                      "positions whose values add up to `target`. Exactly one such pair exists.",
         "input": "The first line has `n` and `target`. The second line has the `n` integers.",
         "output": "Print the two positions `i j` (0-based, with `i < j`).",
-        "constraints": "2 <= n <= 131072\n-10^9 <= values <= 10^9\nExactly one pair adds up to target.",
+        "constraints": "2 <= n <= 262144\n-10^9 <= values <= 10^9\nExactly one pair adds up to target.",
         "complexity": "O(n)",
         "samples": ["4 9\n2 7 11 15\n", "3 6\n3 2 4\n"],
         "tests": lambda: two_sum_tests(),
