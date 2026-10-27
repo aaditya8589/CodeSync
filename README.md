@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/aaditya8589/CodeSync/actions/workflows/ci.yml/badge.svg)](https://github.com/aaditya8589/CodeSync/actions/workflows/ci.yml)
 
-A real-time collaborative code editor: several people edit the same files at the same time, and anyone in the room can compile and run the code in a sandbox.
+**Live: [codesync-aaditya.duckdns.org](https://codesync-aaditya.duckdns.org)**. Sign in with Google or an email, create a room and send its ID to a friend.
+
+A platform for practising data structures and algorithms together: several people edit the same files at the same time, run the code in a sandbox, submit it to a judge, compete in timed matches, run mock interviews, and get hints from an AI tutor that never writes the code for them.
 
 <!-- Demo: record a short GIF of two browser tabs typing at once and clicking Run Code, save it as docs/demo.gif, then replace this comment with ![CodeSync demo](docs/demo.gif) -->
 
@@ -191,7 +193,7 @@ $bytes = New-Object byte[] 48
 
 ## Deployment
 
-CodeSync runs on any Linux server with Docker using `deploy/docker-compose.yml`: Caddy (HTTPS and the React app), the backend, and PostgreSQL. A step-by-step guide for a free Oracle Cloud server is in [deploy/README.md](deploy/README.md).
+The live site runs this way on a small cloud VM. CodeSync runs on any Linux server with Docker using `deploy/docker-compose.yml`: Caddy (HTTPS and the React app), the backend, and PostgreSQL. A step-by-step guide for a free Oracle Cloud server is in [deploy/README.md](deploy/README.md).
 
 ## Project structure
 
